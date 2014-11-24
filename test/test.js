@@ -13,6 +13,7 @@ describe("server", function() {
       server: httpServer,
       allowTextFrames: true,
       allowBinaryFrames: true,
+      origin: null,
     });
     wss.on('connection', function(ws) {
       ws.on('message', function(msg, len) {
@@ -64,6 +65,7 @@ describe("server", function() {
       server: httpServer,
       maxFrameSize: 10,
       allowTextFrames: true,
+      origin: null,
     });
     httpServer.listen(function() {
       var options = {

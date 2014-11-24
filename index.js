@@ -70,17 +70,17 @@ function createServer(options) {
 function createClient(options) {
   var nonce = rando(16).toString('base64');
   options = extend({
-    headers: {
-      'Connection': 'keep-alive, Upgrade',
-      'Pragma': 'no-cache',
-      'Cache-Control': 'no-cache',
-      'Upgrade': 'websocket',
-      'Sec-WebSocket-Version': '13',
-      'Sec-WebSocket-Key': nonce,
-      //'Sec-WebSocket-Extensions': 'permessage-deflate; client_max_window_bits',
-    },
     extraHeaders: {},
   }, options);
+  options.headers = {
+    'Connection': 'keep-alive, Upgrade',
+    'Pragma': 'no-cache',
+    'Cache-Control': 'no-cache',
+    'Upgrade': 'websocket',
+    'Sec-WebSocket-Version': '13',
+    'Sec-WebSocket-Key': nonce,
+    //'Sec-WebSocket-Extensions': 'permessage-deflate; client_max_window_bits',
+  };
   extend(options.headers, options.extraHeaders);
 
   var httpLib;
@@ -181,6 +181,9 @@ WebSocketServer.prototype.setAllowBinaryFrames = function(value) {
 };
 
 WebSocketServer.prototype.setOrigin = function(origin) {
+  if (origin === undefined) {
+    throw new Error("to disable Origin validation explicitly set origin to `null`");
+  }
   this.origin = (origin == null) ? null : origin.toLowerCase();
 };
 
@@ -216,7 +219,7 @@ WebSocketServer.prototype.handleUpgrade = function(request, socket, upgradeHead)
   }
   var subProtocolList = parseHeaderValueList(request.headers['sec-websocket-protocol']);
   if (this.negotiate) {
-    this.emit('negotiate', request, socket, upgradeHead, handleNegotiationResult.bind(this));
+    this.emit('negotiate', request, socket, handleNegotiationResult.bind(this));
   } else {
     writeResponse.call(this, {});
   }
