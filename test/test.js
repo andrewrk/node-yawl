@@ -11,8 +11,8 @@ describe("server", function() {
     var httpServer = http.createServer();
     var wss = yawl.createServer({
       server: httpServer,
-      allowTextFrames: true,
-      allowBinaryFrames: true,
+      allowTextMessages: true,
+      allowBinaryMessages: true,
       origin: null,
     });
     wss.on('connection', function(ws) {
@@ -32,7 +32,7 @@ describe("server", function() {
         protocol: 'ws',
         port: httpServer.address().port,
         path: '/',
-        allowBinaryFrames: true,
+        allowBinaryMessages: true,
       };
       var client = yawl.createClient(options);
       client.on('open', function() {
@@ -64,7 +64,7 @@ describe("server", function() {
     var wss = yawl.createServer({
       server: httpServer,
       maxFrameSize: 10,
-      allowTextFrames: true,
+      allowTextMessages: true,
       origin: null,
     });
     httpServer.listen(function() {

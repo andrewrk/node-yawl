@@ -30,7 +30,7 @@ var server = http.createServer();
 var wss = yawl.createServer({
   server: server,
   origin: null,
-  allowTextFrames: true,
+  allowTextMessages: true,
 });
 wss.on('connection', function(ws) {
   ws.sendText('message');
@@ -53,7 +53,7 @@ var options = url.parse("wss://example.com/path?query=1");
 options.extraHeaders = {
   'User-Agent': "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:33.0) Gecko/20100101 Firefox/33.0"
 };
-options.allowTextFrames = true;
+options.allowTextMessages = true;
 // any options allowed in https.request also allowed here.
 
 var ws = yawl.createClient(options);
@@ -77,9 +77,9 @@ Creates a `WebSocketServer` instance.
  * `server` - an instance of `https.Server` or `http.Server`. Required.
  * `origin` - see `setOrigin` below
  * `negotiate` (optional) - see `setNegotiate` below.
- * `allowTextFrames` (optional) - see `setAllowTextFrames` below.
- * `allowBinaryFrames` (optional) - see `setAllowBinaryFrames` below.
- * `allowFragmentedFrames` (optional) - see `setAllowFragmentedFrames` below.
+ * `allowTextMessages` (optional) - see `setAllowTextMessages` below.
+ * `allowBinaryMessages` (optional) - see `setAllowBinaryMessages` below.
+ * `allowFragmentedMessages` (optional) - see `setAllowFragmentedMessages` below.
  * `maxFrameSize` (optional) - See `setMaxFrameSize` below.
 
 ### yawl.createClient(options)
@@ -94,9 +94,9 @@ Creates a `WebSocketClient` instance.
    rather than ports, use SSL, etc.
  * `extraHeaders` (optional) - `Object` of extra headers to include in the
    upgrade request.
- * `allowTextFrames` (optional) - See `setAllowTextFrames` below.
- * `allowFragmentedFrames` (optional) - See `setAllowFragmentedFrames` below.
- * `allowBinaryFrames` (optional) - See `setAllowBinaryFrames` below.
+ * `allowTextMessages` (optional) - See `setAllowTextMessages` below.
+ * `allowFragmentedMessages` (optional) - See `setAllowFragmentedMessages` below.
+ * `allowBinaryMessages` (optional) - See `setAllowBinaryMessages` below.
  * `maxFrameSize` (optional) - See `setMaxFrameSize` below.
 
 Consider using code like this with `createClient`:
@@ -150,16 +150,16 @@ To activate origin validation, set to a string such as:
 Defaults to `false`. If you set this to `true`, you must listen to the
 `negotiate` event (see below).
 
-#### wss.setAllowTextFrames(value)
+#### wss.setAllowTextMessages(value)
 
 `Boolean`. Set to `true` to allow UTF-8 encoded text messages. Defaults to
 `false`.
 
-#### wss.setAllowBinaryFrames(value)
+#### wss.setAllowBinaryMessages(value)
 
 `Boolean`. Set to `true` to allow binary messages. Defaults to `false`.
 
-#### wss.setAllowFragmentedFrames(value)
+#### wss.setAllowFragmentedMessages(value)
 
 `Boolean`. Set to `true` to allow fragmented messages, that is, messages for
 which you do not know the total size until the message is completely sent.
@@ -304,7 +304,7 @@ the `connection` event is already in the `OPEN` state.
 
 This event will not fire if `maxFrameSize` is set to `Infinity`.
 
-This event will not fire if `allowTextFrames` is set to `false`.
+This event will not fire if `allowTextMessages` is set to `false`.
 
 Fragmented messages never arrive in this event.
 
@@ -314,7 +314,7 @@ Fragmented messages never arrive in this event.
 
 This event will not fire if `maxFrameSize` is set to `Infinity`.
 
-This event will not fire if `allowBinaryFrames` is set to `false`.
+This event will not fire if `allowBinaryMessages` is set to `false`.
 
 Fragmented messages never arrive in this event.
 
@@ -333,12 +333,12 @@ See [readable.setEncoding(encoding)](http://nodejs.org/docs/latest/api/stream.ht
 Unfragmented messages do not arrive in this event if `maxFrameSize` is not
 `Infinity`.
 
-Fragmented messages do not arrive in this event if `allowFragmentedFrames` is
+Fragmented messages do not arrive in this event if `allowFragmentedMessages` is
 `false`.
 
-`isUtf8` will not be `true` if `allowTextFrames` is `false`.
+`isUtf8` will not be `true` if `allowTextMessages` is `false`.
 
-`isUtf8` will not be `false` if `allowBinaryFrames` is `false`.
+`isUtf8` will not be `false` if `allowBinaryMessages` is `false`.
 
 #### Event: 'closeMessage'
 
@@ -375,7 +375,6 @@ guaranteed to fire, unlike `closeMessage`.
 ## Roadmap
 
  * Get rid of sendBinaryStream and sendTextStream in favor of sendStream
- * rename allowTextFrames to allowTextMessages
  * Auto buffer message but also ability to treat all messages as streams
    - 'textMessage' (string)
    - 'binaryMessage' (buffer)

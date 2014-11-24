@@ -96,9 +96,9 @@ function createClient(options) {
   var request = httpLib.request(options);
   var client = new WebSocketClient({
     maskDirectionOut: true,
-    allowTextFrames: options.allowTextFrames,
-    allowFragmentedFrames: options.allowFragmentedFrames,
-    allowBinaryFrames: options.allowBinaryFrames,
+    allowTextMessages: options.allowTextMessages,
+    allowFragmentedMessages: options.allowFragmentedMessages,
+    allowBinaryMessages: options.allowBinaryMessages,
     maxFrameSize: options.maxFrameSize,
   });
   request.on('response', onResponse);
@@ -154,16 +154,16 @@ function WebSocketServer(options) {
   EventEmitter.call(this);
   this.setNegotiate(options.negotiate);
   this.setOrigin(options.origin);
-  this.setAllowTextFrames(options.allowTextFrames);
-  this.setAllowBinaryFrames(options.allowBinaryFrames);
-  this.setAllowFragmentedFrames(options.allowFragmentedFrames);
+  this.setAllowTextMessages(options.allowTextMessages);
+  this.setAllowBinaryMessages(options.allowBinaryMessages);
+  this.setAllowFragmentedMessages(options.allowFragmentedMessages);
   this.setMaxFrameSize(options.maxFrameSize);
 
   options.server.on('upgrade', handleUpgrade.bind(null, this));
 }
 
-WebSocketServer.prototype.setAllowFragmentedFrames = function(value) {
-  this.allowFragmentedFrames = !!value;
+WebSocketServer.prototype.setAllowFragmentedMessages = function(value) {
+  this.allowFragmentedMessages = !!value;
 };
 
 WebSocketServer.prototype.setMaxFrameSize = function(value) {
@@ -174,12 +174,12 @@ WebSocketServer.prototype.setNegotiate = function(value) {
   this.negotiate = !!value;
 };
 
-WebSocketServer.prototype.setAllowTextFrames = function(value) {
-  this.allowTextFrames = !!value;
+WebSocketServer.prototype.setAllowTextMessages = function(value) {
+  this.allowTextMessages = !!value;
 };
 
-WebSocketServer.prototype.setAllowBinaryFrames = function(value) {
-  this.allowBinaryFrames = !!value;
+WebSocketServer.prototype.setAllowBinaryMessages = function(value) {
+  this.allowBinaryMessages = !!value;
 };
 
 WebSocketServer.prototype.setOrigin = function(origin) {
@@ -247,9 +247,9 @@ function handleUpgrade(server, request, socket, upgradeHead) {
       socket: socket,
       upgradeHead: upgradeHead,
       maskDirectionOut: false,
-      allowTextFrames: server.allowTextFrames,
-      allowBinaryFrames: server.allowBinaryFrames,
-      allowFragmentedFrames: server.allowFragmentedFrames,
+      allowTextMessages: server.allowTextMessages,
+      allowBinaryMessages: server.allowBinaryMessages,
+      allowFragmentedMessages: server.allowFragmentedMessages,
       maxFrameSize: server.maxFrameSize,
     });
     socket.on('error', function(err) {
@@ -284,9 +284,9 @@ function WebSocketClient(options) {
   this.socket = options.socket;
   this.maskDirectionOut = !!options.maskDirectionOut;
 
-  this.allowTextFrames = !!options.allowTextFrames;
-  this.allowBinaryFrames = !!options.allowBinaryFrames;
-  this.allowFragmentedFrames = !!options.allowFragmentedFrames;
+  this.allowTextMessages = !!options.allowTextMessages;
+  this.allowBinaryMessages = !!options.allowBinaryMessages;
+  this.allowFragmentedMessages = !!options.allowFragmentedMessages;
   this.maxFrameSize = (options.maxFrameSize == null) ? DEFAULT_MAX_FRAME_SIZE : +options.maxFrameSize;
 
   this.error = null;
@@ -370,17 +370,16 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
             return;
           }
         } else {
-          if (this.opcode === OPCODE_TEXT_FRAME && !this.allowTextFrames) {
-            this.close(1003, "text frames not allowed");
+          if (this.opcode === OPCODE_TEXT_FRAME && !this.allowTextMessages) {
+            this.close(1003, "text messages not allowed");
             return;
           }
-          if (this.opcode === OPCODE_BINARY_FRAME && !this.allowBinaryFrames) {
-            console.log("binary frames not allowed", this.buffer);
-            this.close(1003, "binary frames not allowed");
+          if (this.opcode === OPCODE_BINARY_FRAME && !this.allowBinaryMessages) {
+            this.close(1003, "binary messages not allowed");
             return;
           }
-          if (!this.fin && !this.allowFragmentedFrames) {
-            this.close(1009, "fragmented frames not allowed");
+          if (!this.fin && !this.allowFragmentedMessages) {
+            this.close(1009, "fragmented messages not allowed");
             return;
           }
           this.msgOpcode = this.opcode;
