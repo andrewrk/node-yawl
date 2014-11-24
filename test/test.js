@@ -9,7 +9,11 @@ var it = global.it;
 describe("server", function() {
   it("default server", function(cb) {
     var httpServer = http.createServer();
-    var wss = yawsl.createServer({server: httpServer});
+    var wss = yawsl.createServer({
+      server: httpServer,
+      allowTextFrames: true,
+      allowBinaryFrames: true,
+    });
     wss.on('connection', function(ws) {
       ws.on('message', function(msg, len) {
         assert.strictEqual(len, 5);
@@ -27,6 +31,7 @@ describe("server", function() {
         protocol: 'ws',
         port: httpServer.address().port,
         path: '/',
+        allowBinaryFrames: true,
       };
       var client = yawsl.createClient(options);
       client.on('open', function() {
@@ -58,6 +63,7 @@ describe("server", function() {
     var wss = yawsl.createServer({
       server: httpServer,
       maxFrameSize: 10,
+      allowTextFrames: true,
     });
     httpServer.listen(function() {
       var options = {

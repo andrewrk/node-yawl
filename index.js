@@ -61,6 +61,8 @@ var STATE_PONG_FRAME     = STATE_COUNT++;
 var STATE_CLOSING        = STATE_COUNT++;
 var STATE_CLOSED         = STATE_COUNT++;
 
+var DEFAULT_MAX_FRAME_SIZE = 8 * 1024 * 1024;
+
 function createServer(options) {
   return new WebSocketServer(options);
 }
@@ -94,6 +96,10 @@ function createClient(options) {
   var request = httpLib.request(options);
   var client = new WebSocketClient({
     maskDirectionOut: true,
+    allowTextFrames: options.allowTextFrames,
+    allowFragmentedFrames: options.allowFragmentedFrames,
+    allowBinaryFrames: options.allowBinaryFrames,
+    maxFrameSize: options.maxFrameSize,
   });
   request.on('response', onResponse);
   request.on('upgrade', onUpgrade);
@@ -147,14 +153,19 @@ function WebSocketServer(options) {
   this.setOrigin(options.origin);
   this.setAllowTextFrames(options.allowTextFrames);
   this.setAllowBinaryFrames(options.allowBinaryFrames);
+  this.setAllowFragmentedFrames(options.allowFragmentedFrames);
   this.setMaxFrameSize(options.maxFrameSize);
 
   var server = options.server;
   server.on('upgrade', this.handleUpgrade.bind(this));
 }
 
+WebSocketServer.prototype.setAllowFragmentedFrames = function(value) {
+  this.allowFragmentedFrames = !!value;
+};
+
 WebSocketServer.prototype.setMaxFrameSize = function(value) {
-  this.maxFrameSize = (value == null) ? Infinity : +value;
+  this.maxFrameSize = (value == null) ? DEFAULT_MAX_FRAME_SIZE : +value;
 };
 
 WebSocketServer.prototype.setNegotiate = function(value) {
@@ -162,11 +173,11 @@ WebSocketServer.prototype.setNegotiate = function(value) {
 };
 
 WebSocketServer.prototype.setAllowTextFrames = function(value) {
-  this.allowTextFrames = (value == null) ? true : !!value;
+  this.allowTextFrames = !!value;
 };
 
 WebSocketServer.prototype.setAllowBinaryFrames = function(value) {
-  this.allowBinaryFrames = (value == null) ? true : !!value;
+  this.allowBinaryFrames = !!value;
 };
 
 WebSocketServer.prototype.setOrigin = function(origin) {
@@ -233,6 +244,7 @@ WebSocketServer.prototype.handleUpgrade = function(request, socket, upgradeHead)
       maskDirectionOut: false,
       allowTextFrames: this.allowTextFrames,
       allowBinaryFrames: this.allowBinaryFrames,
+      allowFragmentedFrames: this.allowFragmentedFrames,
       maxFrameSize: this.maxFrameSize,
     });
     request.on('error', function(err) {
@@ -267,9 +279,10 @@ function WebSocketClient(options) {
   this.socket = options.socket;
   this.maskDirectionOut = !!options.maskDirectionOut;
 
-  this.allowTextFrames = (options.allowTextFrames == null) ? true : !!options.allowTextFrames;
-  this.allowBinaryFrames = (options.allowBinaryFrames == null) ? true : !!options.allowBinaryFrames;
-  this.maxFrameSize = (options.maxFrameSize == null) ? Infinity : +options.maxFrameSize;
+  this.allowTextFrames = !!options.allowTextFrames;
+  this.allowBinaryFrames = !!options.allowBinaryFrames;
+  this.allowFragmentedFrames = !!options.allowFragmentedFrames;
+  this.maxFrameSize = (options.maxFrameSize == null) ? DEFAULT_MAX_FRAME_SIZE : +options.maxFrameSize;
 
   this.error = null;
   this.state = STATE_START;
@@ -357,7 +370,12 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
             return;
           }
           if (this.opcode === OPCODE_BINARY_FRAME && !this.allowBinaryFrames) {
+            console.log("binary frames not allowed", this.buffer);
             this.close(1003, "binary frames not allowed");
+            return;
+          }
+          if (!this.fin && !this.allowFragmentedFrames) {
+            this.close(1009, "fragmented frames not allowed");
             return;
           }
           this.msgOpcode = this.opcode;

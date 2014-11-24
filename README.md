@@ -67,7 +67,9 @@ TODO
 
  * RFC 6455 compliance and test suite
  * Auto heartbeat
- * Auto buffer message
+ * Auto buffer message but also ability to treat all messages as streams
+ * client ws should error if server disobeys protocol
+ * docs
  * Supports
    [permessage-deflate](http://tools.ietf.org/html/draft-ietf-hybi-permessage-compression-19)
    extension
