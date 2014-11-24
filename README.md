@@ -66,6 +66,8 @@ TODO
 ## Roadmap
 
  * RFC 6455 compliance and test suite
+ * Auto heartbeat
+ * Auto buffer message
  * Supports
    [permessage-deflate](http://tools.ietf.org/html/draft-ietf-hybi-permessage-compression-19)
    extension

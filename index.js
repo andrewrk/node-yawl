@@ -147,10 +147,15 @@ function WebSocketServer(options) {
   this.setOrigin(options.origin);
   this.setAllowTextFrames(options.allowTextFrames);
   this.setAllowBinaryFrames(options.allowBinaryFrames);
+  this.setMaxFrameSize(options.maxFrameSize);
 
   var server = options.server;
   server.on('upgrade', this.handleUpgrade.bind(this));
 }
+
+WebSocketServer.prototype.setMaxFrameSize = function(value) {
+  this.maxFrameSize = (value == null) ? Infinity : +value;
+};
 
 WebSocketServer.prototype.setNegotiate = function(value) {
   this.negotiate = !!value;
@@ -228,6 +233,7 @@ WebSocketServer.prototype.handleUpgrade = function(request, socket, upgradeHead)
       maskDirectionOut: false,
       allowTextFrames: this.allowTextFrames,
       allowBinaryFrames: this.allowBinaryFrames,
+      maxFrameSize: this.maxFrameSize,
     });
     request.on('error', function(err) {
       handleError(client, err);
@@ -263,6 +269,7 @@ function WebSocketClient(options) {
 
   this.allowTextFrames = (options.allowTextFrames == null) ? true : !!options.allowTextFrames;
   this.allowBinaryFrames = (options.allowBinaryFrames == null) ? true : !!options.allowBinaryFrames;
+  this.maxFrameSize = (options.maxFrameSize == null) ? Infinity : +options.maxFrameSize;
 
   this.error = null;
   this.state = STATE_START;
@@ -295,6 +302,7 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
 
   var b, slice;
   var amtToRead, encoding;
+  var payloadLen;
 
   outer:
   for (;;) {
@@ -362,7 +370,15 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
         } else if (this.payloadLen === 127) {
           this.state = STATE_PAYLOAD_LEN_64;
         } else {
-          emitMessageAndSetState(this);
+          this.state = this.maskBit ? STATE_MASK_KEY : getDataStateFromOpcode(this.opcode);
+          payloadLen = this.fin ? this.payloadLen : null;
+          if (this.fin && payloadLen > this.maxFrameSize) {
+            this.close(1009, "exceeded max frame size");
+            return;
+          }
+          if (!isControlOpcode) {
+            this.emit('message', this.msgStream, payloadLen);
+          }
         }
         this.buffer = this.buffer.slice(2);
         continue;
@@ -370,13 +386,29 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
         if (this.buffer.length < 2) break outer;
         this.payloadLen = this.buffer.readUInt16BE(0);
         this.buffer = this.buffer.slice(2);
-        emitMessageAndSetState(this);
+        this.state = this.maskBit ? STATE_MASK_KEY : getDataStateFromOpcode(this.opcode);
+        payloadLen = this.fin ? this.payloadLen : null;
+        if (this.fin && payloadLen > this.maxFrameSize) {
+          this.close(1009, "exceeded max frame size");
+          return;
+        }
+        if (!IS_CONTROL_OPCODE[this.opcode]) {
+          this.emit('message', this.msgStream, payloadLen);
+        }
         continue;
       case STATE_PAYLOAD_LEN_64:
         if (this.buffer.length < 8) break outer;
         this.payloadLen = readUInt64BE(this.buffer, 0);
         this.buffer = this.buffer.slice(8);
-        emitMessageAndSetState(this);
+        this.state = this.maskBit ? STATE_MASK_KEY : getDataStateFromOpcode(this.opcode);
+        payloadLen = this.fin ? this.payloadLen : null;
+        if (this.fin && payloadLen > this.maxFrameSize) {
+          this.close(1009, "exceeded max frame size");
+          return;
+        }
+        if (!IS_CONTROL_OPCODE[this.opcode]) {
+          this.emit('message', this.msgStream, payloadLen);
+        }
         continue;
       case STATE_MASK_KEY:
         if (this.buffer.length < 4) break outer;
@@ -577,14 +609,6 @@ WebSocketClient.prototype.close = function(statusCode, message) {
 WebSocketClient.prototype.isOpen = function() {
   return this.state !== STATE_CLOSING && this.state !== STATE_CLOSED;
 };
-
-function emitMessageAndSetState(client) {
-  client.state = client.maskBit ? STATE_MASK_KEY : getDataStateFromOpcode(client.opcode);
-  var payloadLen = client.fin ? client.payloadLen : null;
-  if (!IS_CONTROL_OPCODE[client.opcode]) {
-    client.emit('message', client.msgStream, payloadLen);
-  }
-}
 
 function getHeaderBuffer(byte1, size, mask, extraSize) {
   var b;

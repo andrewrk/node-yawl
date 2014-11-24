@@ -52,4 +52,29 @@ describe("server", function() {
       });
     });
   });
+
+  it("maxFrameSize", function(cb) {
+    var httpServer = http.createServer();
+    var wss = yawsl.createServer({
+      server: httpServer,
+      maxFrameSize: 10,
+    });
+    httpServer.listen(function() {
+      var options = {
+        host: 'localhost',
+        protocol: 'ws',
+        port: httpServer.address().port,
+        path: '/',
+      };
+      var client = yawsl.createClient(options);
+      client.on('open', function() {
+        client.sendText("this is a little bit longer than 10 chars");
+      });
+      client.on('close', function(statusCode, reason) {
+        assert.strictEqual(statusCode, 1009);
+        assert.strictEqual(reason, "exceeded max frame size");
+        cb();
+      });
+    });
+  });
 });
