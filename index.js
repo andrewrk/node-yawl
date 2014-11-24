@@ -14,11 +14,6 @@ exports.WebSocketClient = WebSocketClient;
 
 exports.parseSubProtocolList = parseSubProtocolList;
 
-var OK_CONNECTION_VALUES = {
-  upgrade: true,
-  'keep-alive': true,
-};
-
 var KNOWN_OPCODES = [
   true,  // continuation frame
   true,  // text frame
@@ -87,28 +82,40 @@ function createClient(options) {
   extend(options.headers, options.extraHeaders);
 
   var httpLib;
-  if (options.protocol === 'ws') {
+  if (/^ws:?$/i.test(options.protocol)) {
     httpLib = http;
-  } else if (options.protocol === 'wss') {
+  } else if (/^wss:?$/i.test(options.protocol)) {
     httpLib = https;
   } else {
-    throw new Error("invalid protocol");
+    throw new Error("invalid protocol: " + options.protocol);
   }
+  delete options.protocol;
 
+  var request = httpLib.request(options);
   var client = new WebSocketClient({
-    request: httpLib.request(options, onResponse),
     maskDirectionOut: true,
   });
-  client.request.on('error', function(err) {
+  request.on('response', onResponse);
+  request.on('upgrade', onUpgrade);
+  request.on('error', function(err) {
     handleError(client, err);
   });
+  request.end();
   return client;
 
   function onResponse(response) {
+    client.response = response;
     response.on('error', function(err) {
       handleError(client, err);
     });
-    client.response = response;
+  }
+
+  function onUpgrade(response, socket, upgradeHead) {
+    client.socket = socket;
+    client.upgradeHead = upgradeHead;
+    socket.on('error', function(err) {
+      handleError(client, err);
+    });
     if (response.statusCode !== 101) {
       handleError(client, new Error("server sent invalid status code"));
       return;
@@ -128,21 +135,21 @@ function createClient(options) {
       handleError(client, new Error("server sent invalid handshake response"));
       return;
     }
-    response.pipe(client).pipe(client.request);
+    socket.pipe(client).pipe(socket);
     client.emit('open');
   }
 }
 
 util.inherits(WebSocketServer, EventEmitter);
 function WebSocketServer(options) {
-  options = options || {};
   EventEmitter.call(this);
   this.setNegotiate(options.negotiate);
   this.setOrigin(options.origin);
   this.setAllowTextFrames(options.allowTextFrames);
   this.setAllowBinaryFrames(options.allowBinaryFrames);
 
-  this.middleware = this.handleRequest.bind(this);
+  var server = options.server;
+  server.on('upgrade', this.handleUpgrade.bind(this));
 }
 
 WebSocketServer.prototype.setNegotiate = function(value) {
@@ -161,74 +168,53 @@ WebSocketServer.prototype.setOrigin = function(origin) {
   this.origin = (origin == null) ? null : origin.toLowerCase();
 };
 
-WebSocketServer.prototype.handleRequest = function(request, response, next) {
-  next = next || sendErrorMessage;
-
+WebSocketServer.prototype.handleUpgrade = function(request, socket, upgradeHead) {
   if (lowerHeader(request, 'upgrade') !== 'websocket') {
-    next();
-    return;
-  }
-  var foundUpgrade = false;
-  var foundUnexpectedValue = false;
-  var connectionValues = parseHeaderValueList(request.headers.connection);
-  for (var i = 0; i < connectionValues.length; i += 1) {
-    var value = connectionValues[i];
-    if (value === 'upgrade') {
-      foundUpgrade = true;
-    } else if (!OK_CONNECTION_VALUES[value]) {
-      foundUnexpectedValue = true;
-    }
-  }
-  if (!foundUpgrade) {
-    next();
-    return;
-  }
-  if (foundUnexpectedValue) {
-    response.writeHead(400, "Unexpected Connection Header", {
-      'Connection': 'close',
-    });
-    response.end();
     return;
   }
   if (request.headers['sec-websocket-version'] !== "13") {
-    response.writeHead(426, "Upgrade Required", {
-      'Sec-WebSocket-Version': 13,
-      'Connection': 'close',
-    });
-    response.end();
+    socket.write(
+      "HTTP/1.1 426 Upgrade Required\r\n" +
+      "Sec-WebSocket-Version: 13\r\n" +
+      "Connection: close\r\n" +
+      "\r\n");
+    socket.end();
     return;
   }
   if (this.origin && lowerHeader(request, 'origin') !== this.origin) {
-    response.writeHead(403, "Forbidden", {
-      'Connection': 'close',
-    });
-    response.end();
+    socket.write(
+      "HTTP/1.1 403 Forbidden\r\n" +
+      "Connection: close\r\n" +
+      "\r\n");
+    socket.end();
     return;
   }
   var webSocketKey = request.headers['sec-websocket-key'];
   if (!webSocketKey) {
-    response.writeHead(400, "Expected WebSocket Handshake Key", {
-      'Connection': 'close',
-    });
-    response.end();
+    socket.write(
+      "HTTP/1.1 400 Expected WebSocket Handshake Key\r\n" +
+      "Connection: close\r\n" +
+      "\r\n");
+    socket.end();
     return;
   }
   var subProtocolList = parseHeaderValueList(request.headers['sec-websocket-protocol']);
   if (this.negotiate) {
-    this.emit('negotiate', request, handleNegotiationResult);
+    this.emit('negotiate', request, socket, upgradeHead, handleNegotiationResult.bind(this));
   } else {
-    writeResponse({});
+    writeResponse.call(this, {});
   }
 
-  function handleNegotiationResult(err, extraHeaders) {
-    if (err) return next(err);
+  function handleNegotiationResult(extraHeaders) {
     if (!extraHeaders) {
-      response.writeHead(400, "Bad Request", {
-        'Connection': 'close',
-      });
-      response.end();
+      socket.write(
+        "HTTP/1.1 400 Bad Request\r\n" +
+        "Connection: close\r\n" +
+        "\r\n");
+      socket.end();
+      return;
     }
-    writeResponse(extraHeaders);
+    writeResponse.call(this, extraHeaders);
   }
 
   function writeResponse(extraHeaders) {
@@ -237,8 +223,11 @@ WebSocketServer.prototype.handleRequest = function(request, response, next) {
     var handshakeResponse = hash.digest().toString('base64');
 
     var client = new WebSocketClient({
-      request: request,
+      socket: socket,
+      upgradeHead: upgradeHead,
       maskDirectionOut: false,
+      allowTextFrames: this.allowTextFrames,
+      allowBinaryFrames: this.allowBinaryFrames,
     });
     request.on('error', function(err) {
       handleError(client, err);
@@ -246,7 +235,7 @@ WebSocketServer.prototype.handleRequest = function(request, response, next) {
     request.on('close', function() {
       handleRequestClose(client);
     });
-    response.on('error', function(err) {
+    socket.on('error', function(err) {
       handleError(client, err);
     });
     var responseHeaders = {
@@ -255,25 +244,12 @@ WebSocketServer.prototype.handleRequest = function(request, response, next) {
       'Sec-WebSocket-Accept': handshakeResponse,
     };
     extend(responseHeaders, extraHeaders);
-    response.writeHead(101, "Switching Protocols", responseHeaders);
-    request.pipe(client).pipe(response);
+    socket.write(
+      "HTTP/1.1 101 Switching Protocols\r\n" +
+      renderHeaders(responseHeaders) +
+      "\r\n");
+    socket.pipe(client).pipe(socket);
     this.emit('connection', client);
-  }
-
-  function sendErrorMessage(err) {
-    var code, message;
-    if (err) {
-      console.error(err.stack);
-      code = 500;
-      message = "Internal Server Error";
-    } else {
-      code = 404;
-      message = "Not Found";
-    }
-    response.writeHead(code, message, {
-      'Connection': 'close',
-    });
-    response.end();
   }
 };
 
@@ -281,9 +257,12 @@ util.inherits(WebSocketClient, stream.Transform);
 function WebSocketClient(options) {
   stream.Transform.call(this);
 
-  this.request = options.request;
-  this.response = options.response;
+  this.upgradeHead = options.upgradeHead;
+  this.socket = options.socket;
   this.maskDirectionOut = !!options.maskDirectionOut;
+
+  this.allowTextFrames = (options.allowTextFrames == null) ? true : !!options.allowTextFrames;
+  this.allowBinaryFrames = (options.allowBinaryFrames == null) ? true : !!options.allowBinaryFrames;
 
   this.error = null;
   this.state = STATE_START;
@@ -305,20 +284,25 @@ function WebSocketClient(options) {
 }
 
 WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
+  if (this.error) {
+    callback(this.error);
+    return;
+  }
+
   this.buffer = Buffer.concat([this.buffer, buf]);
+
   var pend = new Pend();
 
   var b, slice;
   var amtToRead, encoding;
 
   outer:
-  for (var i = 0; i < this.buffer.length;) {
-    var bytesAvailable = this.buffer.length - i;
+  for (;;) {
     switch (this.state) {
       case STATE_START:
-        if (bytesAvailable < 2) break outer;
+        if (this.buffer.length < 2) break outer;
 
-        b = this.buffer[i++];
+        b = this.buffer.readUInt8(0);
         this.fin    = getBits(b, 0, 1);
         this.rsv1   = getBits(b, 1, 1);
         this.rsv2   = getBits(b, 2, 1);
@@ -335,7 +319,7 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
           return;
         }
 
-        b = this.buffer[i++];
+        b = this.buffer.readUInt8(1);
         this.maskBit    = getBits(b, 0, 1);
         this.payloadLen = getBits(b, 1, 7);
 
@@ -345,7 +329,8 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
           return;
         }
 
-        if (IS_CONTROL_OPCODE[this.opcode]) {
+        var isControlOpcode = IS_CONTROL_OPCODE[this.opcode];
+        if (isControlOpcode) {
           if (!this.fin) {
             this.close(1002, "control frame must set fin");
             return;
@@ -379,29 +364,30 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
         } else {
           emitMessageAndSetState(this);
         }
+        this.buffer = this.buffer.slice(2);
         continue;
       case STATE_PAYLOAD_LEN_16:
-        if (bytesAvailable < 2) break outer;
-        this.payloadLen = this.buffer.readUInt16BE(i);
-        i += 2;
+        if (this.buffer.length < 2) break outer;
+        this.payloadLen = this.buffer.readUInt16BE(0);
+        this.buffer = this.buffer.slice(2);
         emitMessageAndSetState(this);
         continue;
       case STATE_PAYLOAD_LEN_64:
-        if (bytesAvailable < 8) break outer;
-        this.payloadLen = readUInt64BE(this.buffer, i);
-        i += 8;
+        if (this.buffer.length < 8) break outer;
+        this.payloadLen = readUInt64BE(this.buffer, 0);
+        this.buffer = this.buffer.slice(8);
         emitMessageAndSetState(this);
         continue;
       case STATE_MASK_KEY:
-        if (bytesAvailable < 4) break outer;
-        this.buffer.copy(this.mask, 0, i, i + 4);
-        i += 4;
+        if (this.buffer.length < 4) break outer;
+        this.buffer.copy(this.mask, 0, 0, 4);
+        this.buffer = this.buffer.slice(4);
         this.state = getDataStateFromOpcode(this.opcode);
         continue;
       case STATE_CLOSE_FRAME:
-        if (bytesAvailable < this.payloadLen) break outer;
-        slice = this.buffer.slice(i, i + this.payloadLen);
-        i += this.payloadLen;
+        if (this.buffer.length < this.payloadLen) break outer;
+        slice = this.buffer.slice(0, this.payloadLen);
+        this.buffer = this.buffer.slice(this.payloadLen);
         maskMangle(this, slice);
         var statusCode = (slice.length >= 2) ? slice.readUInt16BE(0) : 1005;
         var message = (slice.length >= 2) ? slice.toString('utf8', 2) : "";
@@ -409,30 +395,31 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
         this.close();
         break outer;
       case STATE_PING_FRAME:
-        if (bytesAvailable < this.payloadLen) break outer;
-        slice = this.buffer.slice(i, i + this.payloadLen);
-        i += this.payloadLen;
+        if (this.buffer.length < this.payloadLen) break outer;
+        slice = this.buffer.slice(0, this.payloadLen);
+        this.buffer = this.buffer.slice(this.payloadLen);
         maskMangle(this, slice);
         this.state = STATE_START;
         this.emit('ping', slice);
         this.sendPong(slice);
         continue;
       case STATE_PONG_FRAME:
-        if (bytesAvailable < this.payloadLen) break outer;
-        slice = this.buffer.slice(i, i + this.payloadLen);
-        i += this.payloadLen;
+        if (this.buffer.length < this.payloadLen) break outer;
+        slice = this.buffer.slice(0, 0 + this.payloadLen);
+        this.buffer = this.buffer.slice(this.payloadLen);
         maskMangle(this, slice);
         this.state = STATE_START;
         this.emit('pong', slice);
         continue;
       case STATE_APP_DATA:
+        if (this.buffer.length < 1) break outer;
         var bytesLeftInMsg = this.payloadLen - this.msgOffset;
-        amtToRead = Math.min(bytesAvailable, bytesLeftInMsg);
-        slice = this.buffer.slice(i, i + amtToRead)
+        amtToRead = Math.min(this.buffer.length, bytesLeftInMsg);
+        slice = this.buffer.slice(0, amtToRead)
         maskMangle(this, slice);
         encoding = (this.msgOpcode === OPCODE_BINARY_FRAME) ? undefined : 'utf8';
         this.msgStream.write(slice, encoding, pend.hold());
-        i += amtToRead;
+        this.buffer = this.buffer.slice(amtToRead);
         this.msgOffset += amtToRead;
         if (bytesLeftInMsg === amtToRead && this.fin) {
           this.msgStream.end();
@@ -456,9 +443,14 @@ WebSocketClient.prototype.sendBinary = function(buffer, sendAsUtf8Text) {
   if (this.sendingStream) {
     throw new Error("send stream already in progress");
   }
+  if (this.error) {
+    throw new Error("socket in error state");
+  }
+  var mask = this.maskDirectionOut ? rando(4) : null;
   // 1 0 0 0 0001  if text
   // 1 0 0 0 0010  if binary
-  var header = getHeaderBuffer(sendAsUtf8Text ? 129 : 130, buffer.length, false);
+  var header = getHeaderBuffer(sendAsUtf8Text ? 129 : 130, buffer.length, mask, 0);
+  if (mask) maskMangleBuf(buffer, mask);
   this.push(header);
   this.push(buffer);
 };
@@ -471,10 +463,24 @@ WebSocketClient.prototype.sendBinaryStream = function(length, options, sendAsUtf
   if (this.sendingStream) {
     throw new Error("send stream already in progress");
   }
+  if (this.error) {
+    throw new Error("socket in error state");
+  }
   this.sendingStream = new stream.Writable(options);
+  var first = true;
   this.sendingStream._write = function(buffer, encoding, callback) {
-    // 0 0 0 0 0000
-    var header = getHeaderBuffer(0, buffer.length, false);
+    var mask = this.maskDirectionOut ? rando(4) : null;
+    var header;
+    if (first) {
+      first = false;
+      // 0 0 0 0 0001  if text
+      // 0 0 0 0 0010  if binary
+      header = getHeaderBuffer(sendAsUtf8Text ? 1 : 2, buffer.length, mask, 0);
+    } else {
+      // 0 0 0 0 0000
+      header = getHeaderBuffer(0, buffer.length, mask, 0);
+    }
+    if (mask) maskMangleBuf(buffer, mask);
     this.push(header);
     this.push(buffer);
     callback();
@@ -482,23 +488,15 @@ WebSocketClient.prototype.sendBinaryStream = function(length, options, sendAsUtf
 
   this.sendingStream.on('finish', function() {
     this.sendingStream = null;
-    // 2 bytes for frame header
-    var header = new Buffer(2);
+    // 2 bytes for frame header + 4 bytes mask
+    var header = new Buffer(6);
     // 1 0 0 0 0000
-    header[0] = 128;
-    // 0 0000000
-    header[1] = 0;
+    header.writeUInt8(128, 0);
+    // 1 0000000
+    header.writeUInt8(128, 1);
+    // don't care about the mask value. the payload is empty.
     this.push(header);
   }.bind(this));
-
-  // 2 bytes for frame header
-  var header = new Buffer(2);
-  // 0 0 0 0 0001  if text
-  // 0 0 0 0 0010  if binary
-  header[0] = sendAsUtf8Text ? 1 : 2;
-  // 0 0000000
-  header[1] = 0;
-  this.push(header);
 
   return this.sendingStream;
 };
@@ -508,37 +506,33 @@ WebSocketClient.prototype.sendCloseWithMessage = function(statusCode, message) {
   if (msgBuffer.length > 125) {
     throw new Error("close message too long");
   }
-  // 2 bytes for frame header, 2 bytes for status code
-  var header = new Buffer(4);
+  var mask = this.maskDirectionOut ? rando(4) : null;
+  // 2 extra bytes for status code
   // 1 0 0 0 1000
-  header[0] = 136;
-  // 0 2+buffer.length
-  header[1] = msgBuffer.length;
-  header.writeUInt16BE(statusCode, 2);
+  var header = getHeaderBuffer(136, 2 + msgBuffer.length, mask, 2);
+  header.writeUInt16BE(statusCode, header.length - 2);
   this.push(header);
   this.push(msgBuffer);
 };
 
 WebSocketClient.prototype.sendCloseBare = function() {
-  // 2 bytes for frame header
-  var closeBuffer = new Buffer(2);
+  var mask = this.maskDirectionOut ? rando(4) : null;
   // 1 0 0 0 1000
-  closeBuffer[0] = 136;
-  // 0 0000000
-  closeBuffer[1] = 0;
-  this.push(closeBuffer);
+  var header = getHeaderBuffer(136, 0, mask, 0);
+  this.push(header);
 };
 
 WebSocketClient.prototype.sendPingBuffer = function(msgBuffer) {
   if (msgBuffer.length > 125) {
     throw new Error("ping message too long");
   }
-  // 2 bytes for frame header
-  var header = new Buffer(2);
+  if (this.error) {
+    throw new Error("socket in error state");
+  }
+  var mask = this.maskDirectionOut ? rando(4) : null;
   // 1 0 0 0 1001
-  header[0] = 137;
-  // 0 buffer.length
-  header[1] = msgBuffer.length;
+  var header = getHeaderBuffer(137, msgBuffer.length, mask, 0);
+  if (mask) maskMangleBuf(msgBuffer, mask);
   this.push(header);
   this.push(msgBuffer);
 };
@@ -551,12 +545,13 @@ WebSocketClient.prototype.sendPongBuffer = function(msgBuffer) {
   if (msgBuffer.length > 125) {
     throw new Error("pong message too long");
   }
-  // 2 bytes for frame header
-  var header = new Buffer(2);
+  if (this.error) {
+    throw new Error("socket in error state");
+  }
+  var mask = this.maskDirectionOut ? rando(4) : null;
   // 1 0 0 0 1010
-  header[0] = 138;
-  // 0 buffer.length
-  header[1] = msgBuffer.length;
+  var header = getHeaderBuffer(138, msgBuffer.length, mask, 0);
+  if (mask) maskMangleBuf(msgBuffer, mask);
   this.push(header);
   this.push(msgBuffer);
 };
@@ -586,27 +581,34 @@ WebSocketClient.prototype.isOpen = function() {
 function emitMessageAndSetState(client) {
   client.state = client.maskBit ? STATE_MASK_KEY : getDataStateFromOpcode(client.opcode);
   var payloadLen = client.fin ? client.payloadLen : null;
-  client.emit('message', client.msgStream, payloadLen);
+  if (!IS_CONTROL_OPCODE[client.opcode]) {
+    client.emit('message', client.msgStream, payloadLen);
+  }
 }
 
-function getHeaderBuffer(byte1, size, mask) {
+function getHeaderBuffer(byte1, size, mask, extraSize) {
   var b;
   var maskBit = mask ? 0x80 : 0x00;
+  var maskSize = mask ? 4 : 0;
   if (size <= 125) {
-    b = new Buffer(2);
-    b[0] = byte1;
-    b[1] = size | maskBit;
+    b = new Buffer(2 + maskSize + extraSize);
+    b.writeUInt8(byte1, 0);
+    b.writeUInt8(size|maskBit, 1);
+    if (mask) mask.copy(b, 2);
   } else if (size <= 65536) {
-    b = new Buffer(4);
-    b[0] = byte1;
-    b[1] = 126 | maskBit;
+    b = new Buffer(4 + maskSize + extraSize);
+    b.writeUInt8(byte1, 0);
+    b.writeUInt8(126|maskBit, 1);
     b.writeUInt16BE(size, 2);
+    if (mask) mask.copy(b, 4);
   } else {
-    b = new Buffer(10);
-    b[0] = byte1;
-    b[1] = 127 | maskBit;
+    b = new Buffer(10 + maskSize + extraSize);
+    b.writeUInt8(byte1, 0);
+    b.writeUInt8(127|maskBit, 1);
     writeUInt64BE(b, size, 2);
+    if (mask) mask.copy(b, 10);
   }
+  return b;
 }
 
 function parseSubProtocolList(request) {
@@ -622,6 +624,10 @@ function handleError(client, err) {
   if (client.error) return;
   client.error = err;
   client.emit('error', err);
+  if (client.msgStream) {
+    client.msgStream.emit('error', err);
+    client.msgStream = null;
+  }
   client.close(1011, "internal error");
 }
 
@@ -639,6 +645,12 @@ function getDataStateFromOpcode(opcode) {
       return STATE_PONG_FRAME;
     default:
       throw new Error("unrecognized opcode");
+  }
+}
+
+function maskMangleBuf(buffer, mask) {
+  for (var i = 0; i < buffer.length; i += 1) {
+    buffer[i] = buffer[i] ^ mask[i % 4];
   }
 }
 
@@ -701,4 +713,13 @@ function rando(size) {
 function lowerHeader(request, name) {
   var value = request.headers[name];
   return value && value.toLowerCase();
+}
+
+function renderHeaders(headers) {
+  var s = "";
+  for (var name in headers) {
+    var value = headers[name];
+    s += name + ": " + value + "\r\n";
+  }
+  return s;
 }

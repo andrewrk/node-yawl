@@ -2,6 +2,9 @@
   "name": "yawsl",
   "version": "0.0.0",
   "description": "yet another web sockets library",
+  "scripts": {
+    "test": "mocha --reporter spec --check-leaks"
+  },
   "keywords": [
     "websocket",
     "websocketserver",
@@ -23,5 +26,19 @@
   "license": "MIT",
   "dependencies": {
     "pend": "~1.2.0"
+  },
+  "devDependencies": {
+    "mocha": "~2.0.1",
+    "streamsink": "~1.2.0"
+  },
+  "directories": {
+    "test": "test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/andrewrk/node-yawsl.git"
+  },
+  "bugs": {
+    "url": "https://github.com/andrewrk/node-yawsl/issues"
   }
 }

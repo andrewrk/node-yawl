@@ -24,15 +24,15 @@ Yet Another WebSocket Library - WebSocket server and client for Node.js
 ```js
 var yawsl = require('yawsl');
 var http = require('http');
-var wss = yawsl.createServer();
-var httpServer = http.createServer(wss.middleware);
+var server = http.createServer(wss.middleware);
+var wss = yawsl.createServer({server: server});
 wss.on('connection', function(ws) {
   ws.send('message', 'data');
   ws.on('message', function(msg, len) {
     msg.pipe(process.stdout);
   });
 });
-httpServer.listen(port, host, function() {
+server.listen(port, host, function() {
   log.info("Listening at " + protocol + "://" + host + ":" + port + "/");
 });
 ```
