@@ -40,7 +40,7 @@ describe("server", function() {
         assert.ok(client.upgradeHead);
         client.sendText("hello");
       });
-      client.on('close', function(statusCode, reason) {
+      client.on('closeMessage', function(statusCode, reason) {
         throw new Error("closed: " + statusCode + ": " + reason);
       });
       client.on('message', function(msg, len) {
@@ -78,9 +78,14 @@ describe("server", function() {
       client.on('open', function() {
         client.sendText("this is a little bit longer than 10 chars");
       });
-      client.on('close', function(statusCode, reason) {
+      var gotCloseMessage = false;
+      client.on('closeMessage', function(statusCode, reason) {
         assert.strictEqual(statusCode, 1009);
         assert.strictEqual(reason, "exceeded max frame size");
+        gotCloseMessage = true;
+      });
+      client.on('close', function() {
+        assert.strictEqual(gotCloseMessage, true);
         cb();
       });
     });

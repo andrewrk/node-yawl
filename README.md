@@ -18,6 +18,7 @@ TODO (work in progress)
  * Low level without sacrificing clean abstractions.
  * [Secure by default](https://en.wikipedia.org/wiki/Secure_by_default),
    [secure by design](https://en.wikipedia.org/wiki/Secure_by_design)
+ * JavaScript implementation. No compiler required.
  * Built for Node.js only. No hacky code to make it also work in the browser.
 
 ## Server Usage
@@ -25,7 +26,7 @@ TODO (work in progress)
 ```js
 var yawl = require('yawl');
 var http = require('http');
-var server = http.createServer(wss.middleware);
+var server = http.createServer();
 var wss = yawl.createServer({
   server: server,
   origin: null,
@@ -58,7 +59,7 @@ options.allowTextFrames = true;
 var ws = yawl.createClient(options);
 ws.on('open', function() {
   ws.sendText("hi");
-  fs.createReadStream("foo.txt").pipe(ws.sendBinaryStream());
+  fs.createReadStream("foo.txt").pipe(ws.sendStream());
 });
 ws.on('textMessage', function(message) {
   console.log(message);
@@ -373,9 +374,6 @@ guaranteed to fire, unlike `closeMessage`.
 
 ## Roadmap
 
- * handleUpgrade error handling?
- * 'close' -> 'closeMessage', 'connectionClose' -> 'close'
- * 'ping' -> 'pingMessage', 'pong' -> 'pongMessage'
  * Get rid of sendBinaryStream and sendTextStream in favor of sendStream
  * rename allowTextFrames to allowTextMessages
  * Auto buffer message but also ability to treat all messages as streams
@@ -387,6 +385,7 @@ guaranteed to fire, unlike `closeMessage`.
    the data instead of erroring
  * client ws should error if server disobeys protocol
  * close() should work differently depending on client or server
+ * handleUpgrade error handling?
  * RFC 6455 compliance and test suite
    - parseExtensionList
  * Auto heartbeat

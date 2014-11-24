@@ -446,7 +446,7 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
         maskMangle(this, slice);
         var statusCode = (slice.length >= 2) ? slice.readUInt16BE(0) : 1005;
         var message = (slice.length >= 2) ? slice.toString('utf8', 2) : "";
-        this.emit('close', statusCode, message);
+        this.emit('closeMessage', statusCode, message);
         this.close();
         break outer;
       case STATE_PING_FRAME:
@@ -455,7 +455,7 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
         this.buffer = this.buffer.slice(this.payloadLen);
         maskMangle(this, slice);
         this.state = STATE_START;
-        this.emit('ping', slice);
+        this.emit('pingMessage', slice);
         this.sendPongBinary(slice);
         continue;
       case STATE_PONG_FRAME:
@@ -464,7 +464,7 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
         this.buffer = this.buffer.slice(this.payloadLen);
         maskMangle(this, slice);
         this.state = STATE_START;
-        this.emit('pong', slice);
+        this.emit('pongMessage', slice);
         continue;
       case STATE_APP_DATA:
         if (this.buffer.length < 1) break outer;
@@ -664,7 +664,7 @@ function parseSubProtocolList(request) {
 
 function handleSocketClose(client) {
   client.state = STATE_CLOSED;
-  client.emit('connectionClose');
+  client.emit('close');
 }
 
 function handleError(client, err) {
