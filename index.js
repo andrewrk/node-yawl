@@ -2,11 +2,16 @@ var EventEmitter = require('events').EventEmitter;
 var stream = require('stream');
 var util = require('util');
 var crypto = require('crypto');
+var http = require('http');
+var https = require('https');
 var Pend = require('pend');
 
 exports.createServer = createServer;
+exports.createClient = createClient;
+
 exports.WebSocketServer = WebSocketServer;
-exports.WebSocketServerClient = WebSocketServerClient;
+exports.WebSocketClient = WebSocketClient;
+
 exports.parseSubProtocolList = parseSubProtocolList;
 
 var OK_CONNECTION_VALUES = {
@@ -65,6 +70,69 @@ function createServer(options) {
   return new WebSocketServer(options);
 }
 
+function createClient(options) {
+  var nonce = rando(16).toString('base64');
+  options = extend({
+    headers: {
+      'Connection': 'keep-alive, Upgrade',
+      'Pragma': 'no-cache',
+      'Cache-Control': 'no-cache',
+      'Upgrade': 'websocket',
+      'Sec-WebSocket-Version': '13',
+      'Sec-WebSocket-Key': nonce,
+      //'Sec-WebSocket-Extensions': 'permessage-deflate; client_max_window_bits',
+    },
+    extraHeaders: {},
+  }, options);
+  extend(options.headers, options.extraHeaders);
+
+  var httpLib;
+  if (options.protocol === 'ws') {
+    httpLib = http;
+  } else if (options.protocol === 'wss') {
+    httpLib = https;
+  } else {
+    throw new Error("invalid protocol");
+  }
+
+  var client = new WebSocketClient({
+    request: httpLib.request(options, onResponse),
+    maskDirectionOut: true,
+  });
+  client.request.on('error', function(err) {
+    handleError(client, err);
+  });
+  return client;
+
+  function onResponse(response) {
+    response.on('error', function(err) {
+      handleError(client, err);
+    });
+    client.response = response;
+    if (response.statusCode !== 101) {
+      handleError(client, new Error("server sent invalid status code"));
+      return;
+    }
+    if (lowerHeader(response, 'connection') !== 'upgrade') {
+      handleError(client, new Error("server sent invalid Connection header"));
+      return;
+    }
+    if (lowerHeader(response, 'upgrade') !== 'websocket') {
+      handleError(client, new Error("server sent invalid Upgrade header"));
+      return;
+    }
+    var hash = crypto.createHash('sha1');
+    hash.update(nonce + HANDSHAKE_GUID);
+    var expectedHandshakeResponse = hash.digest().toString('base64');
+    if (response.headers['sec-websocket-accept'] !== expectedHandshakeResponse) {
+      handleError(client, new Error("server sent invalid handshake response"));
+      return;
+    }
+    response.pipe(client).pipe(client.request);
+    client.emit('open');
+  }
+}
+
 util.inherits(WebSocketServer, EventEmitter);
 function WebSocketServer(options) {
   options = options || {};
@@ -96,7 +164,7 @@ WebSocketServer.prototype.setOrigin = function(origin) {
 WebSocketServer.prototype.handleRequest = function(request, response, next) {
   next = next || sendErrorMessage;
 
-  if (request.headers.upgrade !== 'websocket') {
+  if (lowerHeader(request, 'upgrade') !== 'websocket') {
     next();
     return;
   }
@@ -130,7 +198,7 @@ WebSocketServer.prototype.handleRequest = function(request, response, next) {
     response.end();
     return;
   }
-  if (this.origin && request.headers.origin.toLowerCase() !== this.origin) {
+  if (this.origin && lowerHeader(request, 'origin') !== this.origin) {
     response.writeHead(403, "Forbidden", {
       'Connection': 'close',
     });
@@ -168,7 +236,10 @@ WebSocketServer.prototype.handleRequest = function(request, response, next) {
     hash.update(webSocketKey + HANDSHAKE_GUID);
     var handshakeResponse = hash.digest().toString('base64');
 
-    var client = new WebSocketServerClient(request);
+    var client = new WebSocketClient({
+      request: request,
+      maskDirectionOut: false,
+    });
     request.on('error', function(err) {
       handleError(client, err);
     });
@@ -206,13 +277,15 @@ WebSocketServer.prototype.handleRequest = function(request, response, next) {
   }
 };
 
-util.inherits(WebSocketServerClient, stream.Transform);
-function WebSocketServerClient(request) {
+util.inherits(WebSocketClient, stream.Transform);
+function WebSocketClient(options) {
   stream.Transform.call(this);
 
-  this.request = request;
-  this.error = null;
+  this.request = options.request;
+  this.response = options.response;
+  this.maskDirectionOut = !!options.maskDirectionOut;
 
+  this.error = null;
   this.state = STATE_START;
   this.buffer = new Buffer(0);
 
@@ -231,7 +304,7 @@ function WebSocketServerClient(request) {
   this.sendingStream = null;
 }
 
-WebSocketServerClient.prototype._transform = function(buf, _encoding, callback) {
+WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
   this.buffer = Buffer.concat([this.buffer, buf]);
   var pend = new Pend();
 
@@ -257,22 +330,22 @@ WebSocketServerClient.prototype._transform = function(buf, _encoding, callback) 
           return;
         }
 
-        if (this.maskBit !== 1) {
-          this.close(1002, "client to server must mask");
-          return;
-        }
-
         if (!KNOWN_OPCODES[this.opcode]) {
           this.close(1002, "invalid opcode");
           return;
         }
 
-        var isControl = IS_CONTROL_OPCODE[this.opcode];
-
         b = this.buffer[i++];
         this.maskBit    = getBits(b, 0, 1);
         this.payloadLen = getBits(b, 1, 7);
-        if (isControl) {
+
+        var expectedMaskBit = this.maskDirectionOut ? 0 : 1;
+        if (this.maskBit !== expectedMaskBit) {
+          this.close(1002, "invalid mask bit");
+          return;
+        }
+
+        if (IS_CONTROL_OPCODE[this.opcode]) {
           if (!this.fin) {
             this.close(1002, "control frame must set fin");
             return;
@@ -375,11 +448,11 @@ WebSocketServerClient.prototype._transform = function(buf, _encoding, callback) 
   pend.wait(callback);
 };
 
-WebSocketServerClient.prototype.sendText = function(string) {
+WebSocketClient.prototype.sendText = function(string) {
   this.sendBinary(new Buffer(string, 'utf8'), true);
 };
 
-WebSocketServerClient.prototype.sendBinary = function(buffer, sendAsUtf8Text) {
+WebSocketClient.prototype.sendBinary = function(buffer, sendAsUtf8Text) {
   if (this.sendingStream) {
     throw new Error("send stream already in progress");
   }
@@ -390,11 +463,11 @@ WebSocketServerClient.prototype.sendBinary = function(buffer, sendAsUtf8Text) {
   this.push(buffer);
 };
 
-WebSocketServerClient.prototype.sendTextStream = function(length, options) {
+WebSocketClient.prototype.sendTextStream = function(length, options) {
   return this.sendBinaryStream(length, options, true);
 };
 
-WebSocketServerClient.prototype.sendBinaryStream = function(length, options, sendAsUtf8Text) {
+WebSocketClient.prototype.sendBinaryStream = function(length, options, sendAsUtf8Text) {
   if (this.sendingStream) {
     throw new Error("send stream already in progress");
   }
@@ -430,7 +503,7 @@ WebSocketServerClient.prototype.sendBinaryStream = function(length, options, sen
   return this.sendingStream;
 };
 
-WebSocketServerClient.prototype.sendCloseWithMessage = function(statusCode, message) {
+WebSocketClient.prototype.sendCloseWithMessage = function(statusCode, message) {
   var msgBuffer = new Buffer(message, 'utf8');
   if (msgBuffer.length > 125) {
     throw new Error("close message too long");
@@ -446,7 +519,7 @@ WebSocketServerClient.prototype.sendCloseWithMessage = function(statusCode, mess
   this.push(msgBuffer);
 };
 
-WebSocketServerClient.prototype.sendCloseBare = function() {
+WebSocketClient.prototype.sendCloseBare = function() {
   // 2 bytes for frame header
   var closeBuffer = new Buffer(2);
   // 1 0 0 0 1000
@@ -456,7 +529,7 @@ WebSocketServerClient.prototype.sendCloseBare = function() {
   this.push(closeBuffer);
 };
 
-WebSocketServerClient.prototype.sendPingBuffer = function(msgBuffer) {
+WebSocketClient.prototype.sendPingBuffer = function(msgBuffer) {
   if (msgBuffer.length > 125) {
     throw new Error("ping message too long");
   }
@@ -470,11 +543,11 @@ WebSocketServerClient.prototype.sendPingBuffer = function(msgBuffer) {
   this.push(msgBuffer);
 };
 
-WebSocketServerClient.prototype.sendPingText = function(message) {
+WebSocketClient.prototype.sendPingText = function(message) {
   return this.sendPingBuffer(new Buffer(message, 'utf8'));
 };
 
-WebSocketServerClient.prototype.sendPongBuffer = function(msgBuffer) {
+WebSocketClient.prototype.sendPongBuffer = function(msgBuffer) {
   if (msgBuffer.length > 125) {
     throw new Error("pong message too long");
   }
@@ -488,11 +561,11 @@ WebSocketServerClient.prototype.sendPongBuffer = function(msgBuffer) {
   this.push(msgBuffer);
 };
 
-WebSocketServerClient.prototype.sendPongText = function(message) {
+WebSocketClient.prototype.sendPongText = function(message) {
   return this.sendPongBuffer(new Buffer(message, 'utf8'));
 };
 
-WebSocketServerClient.prototype.close = function(statusCode, message) {
+WebSocketClient.prototype.close = function(statusCode, message) {
   if (!this.isOpen()) return;
   this.state = STATE_CLOSING;
   if (statusCode == null && message == null) {
@@ -506,7 +579,7 @@ WebSocketServerClient.prototype.close = function(statusCode, message) {
   this.push(null);
 };
 
-WebSocketServerClient.prototype.isOpen = function() {
+WebSocketClient.prototype.isOpen = function() {
   return this.state !== STATE_CLOSING && this.state !== STATE_CLOSED;
 };
 
@@ -615,4 +688,17 @@ function writeUInt64BE(buffer, value, offset) {
   var small = value - big;
   buffer.writeUInt32BE(big, offset);
   buffer.writeUInt32BE(small, offset + 4);
+}
+
+function rando(size) {
+  try {
+    return crypto.randomBytes(size);
+  } catch (err) {
+    return crypto.pseudoRandomBytes(size);
+  }
+}
+
+function lowerHeader(request, name) {
+  var value = request.headers[name];
+  return value && value.toLowerCase();
 }
