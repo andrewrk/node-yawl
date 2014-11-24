@@ -391,15 +391,12 @@ guaranteed to fire, unlike `closeMessage`.
 
 ## Roadmap
 
- * Auto buffer message but also ability to treat all messages as streams
-   - 'textMessage' (string)
-   - 'binaryMessage' (buffer)
-   - 'streamMessage' (stream, isUtf8, length)
- * sendBinaryStream: send as unfragmented if length is present
- * when client tries to send message if there is a stream ongoing, it queues
-   the data instead of erroring
+ * use bl module
  * client ws should error if server disobeys protocol
  * close() should work differently depending on client or server
+ * sendStream: send as unfragmented if length is present
+ * when client tries to send message if there is a stream ongoing, it queues
+   the data instead of erroring
  * handleUpgrade error handling?
  * RFC 6455 compliance and test suite, autobahn?
    - parseExtensionList

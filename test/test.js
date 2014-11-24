@@ -7,16 +7,18 @@ var describe = global.describe;
 var it = global.it;
 
 describe("server", function() {
-  it("default server", function(cb) {
+  it("fragmented messages", function(cb) {
     var httpServer = http.createServer();
     var wss = yawl.createServer({
       server: httpServer,
       allowTextMessages: true,
-      allowBinaryMessages: true,
+      allowFragmentedMessages: true,
+      maxFrameSize: Infinity,
       origin: null,
     });
     wss.on('connection', function(ws) {
-      ws.on('message', function(msg, len) {
+      ws.on('streamMessage', function(msg, isUtf8, len) {
+        assert.strictEqual(isUtf8, true);
         assert.strictEqual(len, 5);
         var ss = new StreamSink();
         msg.pipe(ss);
@@ -33,6 +35,7 @@ describe("server", function() {
         port: httpServer.address().port,
         path: '/',
         allowBinaryMessages: true,
+        maxFrameSize: Infinity,
       };
       var client = yawl.createClient(options);
       client.on('open', function() {
@@ -43,7 +46,8 @@ describe("server", function() {
       client.on('closeMessage', function(statusCode, reason) {
         throw new Error("closed: " + statusCode + ": " + reason);
       });
-      client.on('message', function(msg, len) {
+      client.on('streamMessage', function(msg, isUtf8, len) {
+        assert.strictEqual(isUtf8, false);
         assert.strictEqual(len, 4);
         var ss = new StreamSink();
         msg.pipe(ss);
@@ -86,6 +90,43 @@ describe("server", function() {
       });
       client.on('close', function() {
         assert.strictEqual(gotCloseMessage, true);
+        cb();
+      });
+    });
+  });
+
+  it("buffered messages", function(cb) {
+    var httpServer = http.createServer();
+    var wss = yawl.createServer({
+      server: httpServer,
+      allowTextMessages: true,
+      allowBinaryMessages: true,
+      origin: null,
+    });
+    wss.on('connection', function(ws) {
+      ws.on('textMessage', function(message) {
+        assert.strictEqual(message, "how would you like your very own message?");
+        ws.sendBinary(new Buffer([0x100, 0x101, 0x102]));
+      });
+    });
+    httpServer.listen(function() {
+      var options = {
+        host: 'localhost',
+        protocol: 'ws',
+        port: httpServer.address().port,
+        path: '/',
+      };
+      var client = yawl.createClient(options);
+      client.on('open', function() {
+        client.sendText("how would you like your very own message?");
+      });
+      client.on('binaryMessage', function(message) {
+        assert.strictEqual(message[0], 0x100);
+        assert.strictEqual(message[1], 0x101);
+        assert.strictEqual(message[2], 0x102);
+        client.close();
+      });
+      client.on('close', function() {
         cb();
       });
     });

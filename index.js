@@ -14,6 +14,31 @@ exports.WebSocketClient = WebSocketClient;
 
 exports.parseSubProtocolList = parseSubProtocolList;
 
+var OPCODE_CONTINUATION_FRAME = 0x0;
+var OPCODE_TEXT_FRAME         = 0x1;
+var OPCODE_BINARY_FRAME       = 0x2;
+var OPCODE_CLOSE              = 0x8;
+var OPCODE_PING               = 0x9;
+var OPCODE_PONG               = 0xA;
+
+var HANDSHAKE_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+
+var STATE_COUNT          = 0;
+var STATE_START          = STATE_COUNT++;
+var STATE_HAVE_LEN       = STATE_COUNT++;
+var STATE_PAYLOAD_LEN_16 = STATE_COUNT++;
+var STATE_PAYLOAD_LEN_64 = STATE_COUNT++;
+var STATE_MASK_KEY       = STATE_COUNT++;
+var STATE_STREAM_DATA    = STATE_COUNT++;
+var STATE_BUFFER_DATA    = STATE_COUNT++;
+var STATE_CLOSE_FRAME    = STATE_COUNT++;
+var STATE_PING_FRAME     = STATE_COUNT++;
+var STATE_PONG_FRAME     = STATE_COUNT++;
+var STATE_CLOSING        = STATE_COUNT++;
+var STATE_CLOSED         = STATE_COUNT++;
+
+var DEFAULT_MAX_FRAME_SIZE = 8 * 1024 * 1024;
+
 var KNOWN_OPCODES = [
   true,  // continuation frame
   true,  // text frame
@@ -40,28 +65,24 @@ var IS_CONTROL_OPCODE = [
   true,  // ping
   true,  // pong
 ];
-var OPCODE_CONTINUATION_FRAME = 0x0;
-var OPCODE_TEXT_FRAME         = 0x1;
-var OPCODE_BINARY_FRAME       = 0x2;
-var OPCODE_CLOSE              = 0x8;
-var OPCODE_PING               = 0x9;
-var OPCODE_PONG               = 0xA;
-
-var HANDSHAKE_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
-
-var STATE_COUNT          = 0;
-var STATE_START          = STATE_COUNT++;
-var STATE_PAYLOAD_LEN_16 = STATE_COUNT++;
-var STATE_PAYLOAD_LEN_64 = STATE_COUNT++;
-var STATE_MASK_KEY       = STATE_COUNT++;
-var STATE_APP_DATA       = STATE_COUNT++;
-var STATE_CLOSE_FRAME    = STATE_COUNT++;
-var STATE_PING_FRAME     = STATE_COUNT++;
-var STATE_PONG_FRAME     = STATE_COUNT++;
-var STATE_CLOSING        = STATE_COUNT++;
-var STATE_CLOSED         = STATE_COUNT++;
-
-var DEFAULT_MAX_FRAME_SIZE = 8 * 1024 * 1024;
+var IS_MSG_OPCODE = [
+  false, // continuation frame
+  true, // text frame
+  true, // binary frame
+];
+var CONTROL_FRAME_STATE = [
+  STATE_STREAM_DATA, // continuation frame
+  null, // text frame
+  null, // binary frame
+  null, // reserved
+  null, // reserved
+  null, // reserved
+  null, // reserved
+  null, // reserved
+  STATE_CLOSE_FRAME,  // connection close
+  STATE_PING_FRAME,  // ping
+  STATE_PONG_FRAME,  // pong
+];
 
 function createServer(options) {
   return new WebSocketServer(options);
@@ -302,8 +323,9 @@ function WebSocketClient(options) {
   this.payloadLen = 0;
   this.mask = new Buffer(4);
   this.msgStream = null;
-  this.msgOffset = 0;
   this.msgOpcode = 0;
+  this.frameOffset = 0;
+  this.maskNextState = STATE_BUFFER_DATA;
 
   this.sendingStream = null;
 }
@@ -320,7 +342,6 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
 
   var b, slice;
   var amtToRead, encoding;
-  var payloadLen;
 
   outer:
   for (;;) {
@@ -355,13 +376,12 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
           return;
         }
 
-        var isControlOpcode = IS_CONTROL_OPCODE[this.opcode];
-        if (isControlOpcode) {
+        if (IS_CONTROL_OPCODE[this.opcode]) {
           if (!this.fin) {
             this.close(1002, "control frame must set fin");
             return;
           }
-          if (this.payloadLen >= 126) {
+          if (this.payloadLen > 125) {
             this.close(1002, "control frame too big");
             return;
           }
@@ -382,9 +402,6 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
             this.close(1009, "fragmented messages not allowed");
             return;
           }
-          this.msgOpcode = this.opcode;
-          this.msgStream = new stream.PassThrough();
-          this.msgOffset = 0;
         }
 
         if (this.payloadLen === 126) {
@@ -392,51 +409,49 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
         } else if (this.payloadLen === 127) {
           this.state = STATE_PAYLOAD_LEN_64;
         } else {
-          this.state = this.maskBit ? STATE_MASK_KEY : getDataStateFromOpcode(this.opcode);
-          payloadLen = this.fin ? this.payloadLen : null;
-          if (this.fin && payloadLen > this.maxFrameSize) {
-            this.close(1009, "exceeded max frame size");
-            return;
-          }
-          if (!isControlOpcode) {
-            this.emit('message', this.msgStream, payloadLen);
-          }
+          this.state = STATE_HAVE_LEN;
         }
         this.buffer = this.buffer.slice(2);
+        continue;
+      case STATE_HAVE_LEN:
+        if (this.fin && this.payloadLen > this.maxFrameSize) {
+          this.close(1009, "exceeded max frame size");
+          return;
+        }
+        this.frameOffset = 0;
+        if (IS_MSG_OPCODE[this.opcode]) {
+          if (!this.fin || this.maxFrameSize === Infinity) {
+            this.msgOpcode = this.opcode;
+            this.msgStream = new stream.PassThrough();
+            var isUtf8 = (this.opcode === OPCODE_TEXT_FRAME);
+            var streamLen = this.fin ? this.payloadLen : null;
+            this.emit('streamMessage', this.msgStream, isUtf8, streamLen);
+            this.maskNextState = STATE_STREAM_DATA;
+          } else {
+            this.maskNextState = STATE_BUFFER_DATA;
+          }
+        } else {
+          this.maskNextState = CONTROL_FRAME_STATE[this.opcode];
+        }
+        this.state = this.maskBit ? STATE_MASK_KEY : this.maskNextState;
         continue;
       case STATE_PAYLOAD_LEN_16:
         if (this.buffer.length < 2) break outer;
         this.payloadLen = this.buffer.readUInt16BE(0);
         this.buffer = this.buffer.slice(2);
-        this.state = this.maskBit ? STATE_MASK_KEY : getDataStateFromOpcode(this.opcode);
-        payloadLen = this.fin ? this.payloadLen : null;
-        if (this.fin && payloadLen > this.maxFrameSize) {
-          this.close(1009, "exceeded max frame size");
-          return;
-        }
-        if (!IS_CONTROL_OPCODE[this.opcode]) {
-          this.emit('message', this.msgStream, payloadLen);
-        }
+        this.state = STATE_HAVE_LEN;
         continue;
       case STATE_PAYLOAD_LEN_64:
         if (this.buffer.length < 8) break outer;
         this.payloadLen = readUInt64BE(this.buffer, 0);
         this.buffer = this.buffer.slice(8);
-        this.state = this.maskBit ? STATE_MASK_KEY : getDataStateFromOpcode(this.opcode);
-        payloadLen = this.fin ? this.payloadLen : null;
-        if (this.fin && payloadLen > this.maxFrameSize) {
-          this.close(1009, "exceeded max frame size");
-          return;
-        }
-        if (!IS_CONTROL_OPCODE[this.opcode]) {
-          this.emit('message', this.msgStream, payloadLen);
-        }
+        this.state = STATE_HAVE_LEN;
         continue;
       case STATE_MASK_KEY:
         if (this.buffer.length < 4) break outer;
         this.buffer.copy(this.mask, 0, 0, 4);
         this.buffer = this.buffer.slice(4);
-        this.state = getDataStateFromOpcode(this.opcode);
+        this.state = this.maskNextState;
         continue;
       case STATE_CLOSE_FRAME:
         if (this.buffer.length < this.payloadLen) break outer;
@@ -459,23 +474,35 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
         continue;
       case STATE_PONG_FRAME:
         if (this.buffer.length < this.payloadLen) break outer;
-        slice = this.buffer.slice(0, 0 + this.payloadLen);
+        slice = this.buffer.slice(0, this.payloadLen);
         this.buffer = this.buffer.slice(this.payloadLen);
         maskMangle(this, slice);
         this.state = STATE_START;
         this.emit('pongMessage', slice);
         continue;
-      case STATE_APP_DATA:
+      case STATE_BUFFER_DATA:
+        if (this.buffer.length < this.payloadLen) break outer;
+        slice = this.buffer.slice(0, this.payloadLen);
+        this.buffer = this.buffer.slice(this.payloadLen);
+        maskMangle(this, slice);
+        this.state = STATE_START;
+        if (this.opcode === OPCODE_TEXT_FRAME) {
+          this.emit('textMessage', slice.toString('utf8'));
+        } else {
+          this.emit('binaryMessage', slice);
+        }
+        continue;
+      case STATE_STREAM_DATA:
         if (this.buffer.length < 1) break outer;
-        var bytesLeftInMsg = this.payloadLen - this.msgOffset;
-        amtToRead = Math.min(this.buffer.length, bytesLeftInMsg);
+        var bytesLeftInFrame = this.payloadLen - this.frameOffset;
+        amtToRead = Math.min(this.buffer.length, bytesLeftInFrame);
         slice = this.buffer.slice(0, amtToRead)
         maskMangle(this, slice);
         encoding = (this.msgOpcode === OPCODE_BINARY_FRAME) ? undefined : 'utf8';
         this.msgStream.write(slice, encoding, pend.hold());
         this.buffer = this.buffer.slice(amtToRead);
-        this.msgOffset += amtToRead;
-        if (bytesLeftInMsg === amtToRead && this.fin) {
+        this.frameOffset += amtToRead;
+        if (this.fin && bytesLeftInFrame === amtToRead) {
           this.msgStream.end();
           this.msgStream = null;
           this.state = STATE_START;
@@ -673,23 +700,6 @@ function handleError(client, err) {
   client.close(1011, "internal error");
 }
 
-function getDataStateFromOpcode(opcode) {
-  switch (opcode) {
-    case OPCODE_CONTINUATION_FRAME:
-    case OPCODE_TEXT_FRAME:
-    case OPCODE_BINARY_FRAME:
-      return STATE_APP_DATA;
-    case OPCODE_CLOSE:
-      return STATE_CLOSE_FRAME;
-    case OPCODE_PING:
-      return STATE_PING_FRAME;
-    case OPCODE_PONG:
-      return STATE_PONG_FRAME;
-    default:
-      throw new Error("unrecognized opcode");
-  }
-}
-
 function maskMangleBuf(buffer, mask) {
   for (var i = 0; i < buffer.length; i += 1) {
     buffer[i] = buffer[i] ^ mask[i % 4];
@@ -699,7 +709,7 @@ function maskMangleBuf(buffer, mask) {
 function maskMangle(client, buffer) {
   if (!client.maskBit) return;
   for (var i = 0; i < buffer.length; i += 1) {
-    buffer[i] = buffer[i] ^ client.mask[(i + client.msgOffset) % 4];
+    buffer[i] = buffer[i] ^ client.mask[(i + client.frameOffset) % 4];
   }
 }
 
