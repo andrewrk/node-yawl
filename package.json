@@ -1,5 +1,5 @@
 {
-  "name": "yawsl",
+  "name": "yawl",
   "version": "0.0.0",
   "description": "yet another web sockets library",
   "scripts": {
@@ -36,9 +36,9 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/andrewrk/node-yawsl.git"
+    "url": "https://github.com/andrewrk/node-yawl.git"
   },
   "bugs": {
-    "url": "https://github.com/andrewrk/node-yawsl/issues"
+    "url": "https://github.com/andrewrk/node-yawl/issues"
   }
 }

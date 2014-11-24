@@ -1,4 +1,4 @@
-var yawsl = require('../');
+var yawl = require('../');
 var url = require('url');
 var http = require('http');
 var assert = require('assert');
@@ -9,7 +9,7 @@ var it = global.it;
 describe("server", function() {
   it("default server", function(cb) {
     var httpServer = http.createServer();
-    var wss = yawsl.createServer({
+    var wss = yawl.createServer({
       server: httpServer,
       allowTextFrames: true,
       allowBinaryFrames: true,
@@ -34,7 +34,7 @@ describe("server", function() {
         path: '/',
         allowBinaryFrames: true,
       };
-      var client = yawsl.createClient(options);
+      var client = yawl.createClient(options);
       client.on('open', function() {
         assert.ok(client.socket);
         assert.ok(client.upgradeHead);
@@ -61,7 +61,7 @@ describe("server", function() {
 
   it("maxFrameSize", function(cb) {
     var httpServer = http.createServer();
-    var wss = yawsl.createServer({
+    var wss = yawl.createServer({
       server: httpServer,
       maxFrameSize: 10,
       allowTextFrames: true,
@@ -74,7 +74,7 @@ describe("server", function() {
         port: httpServer.address().port,
         path: '/',
       };
-      var client = yawsl.createClient(options);
+      var client = yawl.createClient(options);
       client.on('open', function() {
         client.sendText("this is a little bit longer than 10 chars");
       });

@@ -122,6 +122,9 @@ function createClient(options) {
     socket.on('error', function(err) {
       handleError(client, err);
     });
+    socket.on('close', function() {
+      handleSocketClose(client);
+    });
     if (response.statusCode !== 101) {
       handleError(client, new Error("server sent invalid status code"));
       return;
@@ -156,8 +159,7 @@ function WebSocketServer(options) {
   this.setAllowFragmentedFrames(options.allowFragmentedFrames);
   this.setMaxFrameSize(options.maxFrameSize);
 
-  var server = options.server;
-  server.on('upgrade', this.handleUpgrade.bind(this));
+  options.server.on('upgrade', handleUpgrade.bind(null, this));
 }
 
 WebSocketServer.prototype.setAllowFragmentedFrames = function(value) {
@@ -187,7 +189,7 @@ WebSocketServer.prototype.setOrigin = function(origin) {
   this.origin = (origin == null) ? null : origin.toLowerCase();
 };
 
-WebSocketServer.prototype.handleUpgrade = function(request, socket, upgradeHead) {
+function handleUpgrade(server, request, socket, upgradeHead) {
   if (lowerHeader(request, 'upgrade') !== 'websocket') {
     return;
   }
@@ -200,7 +202,7 @@ WebSocketServer.prototype.handleUpgrade = function(request, socket, upgradeHead)
     socket.end();
     return;
   }
-  if (this.origin && lowerHeader(request, 'origin') !== this.origin) {
+  if (server.origin && lowerHeader(request, 'origin') !== server.origin) {
     socket.write(
       "HTTP/1.1 403 Forbidden\r\n" +
       "Connection: close\r\n" +
@@ -218,10 +220,10 @@ WebSocketServer.prototype.handleUpgrade = function(request, socket, upgradeHead)
     return;
   }
   var subProtocolList = parseHeaderValueList(request.headers['sec-websocket-protocol']);
-  if (this.negotiate) {
-    this.emit('negotiate', request, socket, handleNegotiationResult.bind(this));
+  if (server.negotiate) {
+    server.emit('negotiate', request, socket, handleNegotiationResult);
   } else {
-    writeResponse.call(this, {});
+    writeResponse.call(server, {});
   }
 
   function handleNegotiationResult(extraHeaders) {
@@ -233,7 +235,7 @@ WebSocketServer.prototype.handleUpgrade = function(request, socket, upgradeHead)
       socket.end();
       return;
     }
-    writeResponse.call(this, extraHeaders);
+    writeResponse(extraHeaders);
   }
 
   function writeResponse(extraHeaders) {
@@ -245,16 +247,16 @@ WebSocketServer.prototype.handleUpgrade = function(request, socket, upgradeHead)
       socket: socket,
       upgradeHead: upgradeHead,
       maskDirectionOut: false,
-      allowTextFrames: this.allowTextFrames,
-      allowBinaryFrames: this.allowBinaryFrames,
-      allowFragmentedFrames: this.allowFragmentedFrames,
-      maxFrameSize: this.maxFrameSize,
+      allowTextFrames: server.allowTextFrames,
+      allowBinaryFrames: server.allowBinaryFrames,
+      allowFragmentedFrames: server.allowFragmentedFrames,
+      maxFrameSize: server.maxFrameSize,
     });
-    request.on('error', function(err) {
+    socket.on('error', function(err) {
       handleError(client, err);
     });
-    request.on('close', function() {
-      handleRequestClose(client);
+    socket.on('close', function() {
+      handleSocketClose(client);
     });
     socket.on('error', function(err) {
       handleError(client, err);
@@ -270,9 +272,9 @@ WebSocketServer.prototype.handleUpgrade = function(request, socket, upgradeHead)
       renderHeaders(responseHeaders) +
       "\r\n");
     socket.pipe(client).pipe(socket);
-    this.emit('connection', client);
+    server.emit('connection', client);
   }
-};
+}
 
 util.inherits(WebSocketClient, stream.Transform);
 function WebSocketClient(options) {
@@ -454,7 +456,7 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
         maskMangle(this, slice);
         this.state = STATE_START;
         this.emit('ping', slice);
-        this.sendPong(slice);
+        this.sendPongBinary(slice);
         continue;
       case STATE_PONG_FRAME:
         if (this.buffer.length < this.payloadLen) break outer;
@@ -556,7 +558,7 @@ WebSocketClient.prototype.sendBinaryStream = function(length, options, sendAsUtf
 
 WebSocketClient.prototype.sendCloseWithMessage = function(statusCode, message) {
   var msgBuffer = new Buffer(message, 'utf8');
-  if (msgBuffer.length > 125) {
+  if (msgBuffer.length > 123) {
     throw new Error("close message too long");
   }
   var mask = this.maskDirectionOut ? rando(4) : null;
@@ -575,7 +577,7 @@ WebSocketClient.prototype.sendCloseBare = function() {
   this.push(header);
 };
 
-WebSocketClient.prototype.sendPingBuffer = function(msgBuffer) {
+WebSocketClient.prototype.sendPingBinary = function(msgBuffer) {
   if (msgBuffer.length > 125) {
     throw new Error("ping message too long");
   }
@@ -591,10 +593,10 @@ WebSocketClient.prototype.sendPingBuffer = function(msgBuffer) {
 };
 
 WebSocketClient.prototype.sendPingText = function(message) {
-  return this.sendPingBuffer(new Buffer(message, 'utf8'));
+  return this.sendPingBinary(new Buffer(message, 'utf8'));
 };
 
-WebSocketClient.prototype.sendPongBuffer = function(msgBuffer) {
+WebSocketClient.prototype.sendPongBinary = function(msgBuffer) {
   if (msgBuffer.length > 125) {
     throw new Error("pong message too long");
   }
@@ -610,7 +612,7 @@ WebSocketClient.prototype.sendPongBuffer = function(msgBuffer) {
 };
 
 WebSocketClient.prototype.sendPongText = function(message) {
-  return this.sendPongBuffer(new Buffer(message, 'utf8'));
+  return this.sendPongBinary(new Buffer(message, 'utf8'));
 };
 
 WebSocketClient.prototype.close = function(statusCode, message) {
@@ -660,7 +662,7 @@ function parseSubProtocolList(request) {
   return parseHeaderValueList(request.headers['sec-websocket-protocol']);
 }
 
-function handleRequestClose(client) {
+function handleSocketClose(client) {
   client.state = STATE_CLOSED;
   client.emit('connectionClose');
 }
