@@ -509,11 +509,7 @@ WebSocketClient.prototype.sendBinary = function(buffer, sendAsUtf8Text) {
   this.push(buffer);
 };
 
-WebSocketClient.prototype.sendTextStream = function(length, options) {
-  return this.sendBinaryStream(length, options, true);
-};
-
-WebSocketClient.prototype.sendBinaryStream = function(length, options, sendAsUtf8Text) {
+WebSocketClient.prototype.sendStream = function(length, sendAsUtf8Text, options) {
   if (this.sendingStream) {
     throw new Error("send stream already in progress");
   }

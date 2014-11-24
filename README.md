@@ -218,6 +218,10 @@ Sends an unfragmented UTF-8 encoded text message.
 
 Sends an unfragmented binary message.
 
+If this websocket client does not represent a client connected to a server,
+`buffer` will be modified in place. Make a copy of the buffer if you do not
+want this to happen.
+
 #### ws.sendStream([length], [isUtf8], [options])
 
  * `length` (optional) - `Number`. If supplied, this message will be sent
@@ -236,6 +240,11 @@ queued until the stream is finished.
 
 If the message is unfragmented, even control messages such as ping, pong,
 and close must be queued until the stream is finished.
+
+When you call `write()` on the `Writable` stream that is returned, if this
+websocket client does not represent a client connected to a server, the buffer
+you pass to `write()` will be modified in place. Make a copy of the buffer if
+you do not want this to happen.
 
 ### ws.close(statusCode, message)
 
@@ -263,6 +272,10 @@ while the state is not `OPEN` throws an error.
 
 Sends a ping message. `buffer.length` must be no greater than 125 bytes.
 
+If this websocket client does not represent a client connected to a server,
+`buffer` will be modified in place. Make a copy of the buffer if you do not
+want this to happen.
+
 ### ws.sendPingText(string)
 
 Sends a ping message. `string` must be no greater than 125 bytes when UTF-8
@@ -273,6 +286,10 @@ encoded.
 Sends a pong message. `buffer.length` must be no greater than 125 bytes.
 
 Pong messages are automatically sent as a response to ping messages.
+
+If this websocket client does not represent a client connected to a server,
+`buffer` will be modified in place. Make a copy of the buffer if you do not
+want this to happen.
 
 ### ws.sendPongText(string)
 
@@ -374,7 +391,6 @@ guaranteed to fire, unlike `closeMessage`.
 
 ## Roadmap
 
- * Get rid of sendBinaryStream and sendTextStream in favor of sendStream
  * Auto buffer message but also ability to treat all messages as streams
    - 'textMessage' (string)
    - 'binaryMessage' (buffer)
@@ -385,7 +401,7 @@ guaranteed to fire, unlike `closeMessage`.
  * client ws should error if server disobeys protocol
  * close() should work differently depending on client or server
  * handleUpgrade error handling?
- * RFC 6455 compliance and test suite
+ * RFC 6455 compliance and test suite, autobahn?
    - parseExtensionList
  * Auto heartbeat
  * Supports
