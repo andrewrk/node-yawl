@@ -1,8 +1,27 @@
 {
-  "name": "web-socket-server",
+  "name": "yawsl",
   "version": "0.0.0",
-  "description": "RFC 6455 WebSocketServer",
+  "description": "yet another web sockets library",
+  "keywords": [
+    "websocket",
+    "websocketserver",
+    "ws",
+    "wss",
+    "rfc6455",
+    "rfc",
+    "6455",
+    "hixie",
+    "hybi",
+    "push",
+    "rfc-6455",
+    "server",
+    "client",
+    "websockets"
+  ],
   "main": "index.js",
   "author": "Andrew Kelley <superjoe30@gmail.com>",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "pend": "~1.2.0"
+  }
 }
