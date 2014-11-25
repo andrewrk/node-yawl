@@ -40,6 +40,10 @@ var STATE_CLOSED         = STATE_COUNT++;
 
 var DEFAULT_MAX_FRAME_SIZE = 8 * 1024 * 1024;
 
+// maximum value that the highest 32-bits of a 64-bit size can be
+// due to JavaScript not having unsigned 64-bit integer values
+var DOUBLE_MAX_HIGH_32 = Math.pow(2, 52 - 32);
+
 var KNOWN_OPCODES = [
   true,  // continuation frame
   true,  // text frame
@@ -446,7 +450,13 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
         continue;
       case STATE_PAYLOAD_LEN_64:
         if (this.buffer.length < 8) break outer;
-        this.payloadLen = readUInt64BE(this.buffer, 0);
+        var big = this.buffer.readUInt32BE(0, BUFFER_NO_DEBUG);
+        if (big > DOUBLE_MAX_HIGH_32) {
+          this.close(1009, "exceeded max frame size");
+          return;
+        }
+        var small = this.buffer.readUInt32BE(4, BUFFER_NO_DEBUG);
+        this.payloadLen = big * 0x100000000 + small;
         this.buffer.consume(8);
         this.state = STATE_HAVE_LEN;
         continue;
