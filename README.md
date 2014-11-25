@@ -135,7 +135,49 @@ Yields:
 
 ### yawl.parseExtensionList(request)
 
-TODO (unimplemented)
+Parses `request.headers['sec-websocket-extensions']` and returns an array of
+objects.
+
+Example:
+
+```
+...
+Sec-WebSocket-Extensions: foo, bar; baz=2; extra, third; arg="qu;o\"t,ed"
+...
+```
+
+Yields:
+
+```js
+[
+  {
+    name: 'foo',
+    params: [],
+  },
+  {
+    name: 'bar',
+    params: [
+      {
+        name: 'baz',
+        value: '2',
+      },
+      {
+        name: 'extra',
+        value: null,
+      },
+    ],
+  },
+  {
+    name: 'third',
+    params: [
+      {
+        name: 'arg',
+        value: 'qu;o"t,ed',
+      },
+    ],
+  },
+]
+```
 
 ### yawl.WebSocketServer
 
@@ -448,7 +490,6 @@ we would have to have a native add-on.
 ## Roadmap
 
  * RFC 6455 compliance and test suite, autobahn?
-   - parseExtensionList
  * Supports
    [permessage-deflate](http://tools.ietf.org/html/draft-ietf-hybi-permessage-compression-19)
    extension

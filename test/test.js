@@ -180,4 +180,45 @@ describe("server", function() {
       });
     });
   });
+
+  it("parseExtensionList missing header", function() {
+    assert.deepEqual(yawl.parseExtensionList({headers: {}}), null);
+  });
+
+  it("parseExtensionList complicated", function() {
+    var request = {
+      headers: {
+        'sec-websockets-extensions': 'foo, bar; baz=2; extra, third; arg="qu,o\"t;ed"',
+      },
+    };
+    var expected = [
+      {
+        name: 'foo',
+        params: [],
+      },
+      {
+        name: 'bar',
+        params: [
+          {
+            name: 'baz',
+            value: '2',
+          },
+          {
+            name: 'extra',
+            value: null,
+          },
+        ],
+      },
+      {
+        name: 'third',
+        params: [
+          {
+            name: 'arg',
+            value: 'quo"ted',
+          },
+        ],
+      },
+    ];
+    assert.deepEqual(yawl.parseExtensionList(request), expected);
+  });
 });

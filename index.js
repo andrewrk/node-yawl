@@ -14,6 +14,7 @@ exports.WebSocketServer = WebSocketServer;
 exports.WebSocketClient = WebSocketClient;
 
 exports.parseSubProtocolList = parseSubProtocolList;
+exports.parseExtensionList = parseExtensionList;
 
 var OPCODE_CONTINUATION_FRAME = 0x0;
 var OPCODE_TEXT_FRAME         = 0x1;
@@ -707,6 +708,12 @@ function getHeaderBuffer(byte1, size, mask) {
 
 function parseSubProtocolList(request) {
   return parseHeaderValueList(request.headers['sec-websocket-protocol']);
+}
+
+function parseExtensionList(request) {
+  var headerValue = request.headers['sec-websocket-extensions'];
+  if (!headerValue) return null;
+  // TODO
 }
 
 function handleSocketClose(client) {
