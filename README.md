@@ -199,9 +199,11 @@ See also `yawl.parseSubProtocolList` and `yawl.parseExtensionList`.
 
 #### Event: 'connection'
 
-`function (ws) { }`
+`function (ws, request) { }`
 
-`ws` is a `WebSocketClient`.
+ * `ws` - `WebSocketClient`.
+ * `request` - [http.IncomingMessage](http://nodejs.org/docs/latest/api/http.html#http_http_incomingmessage)
+   the HTTP upgrade request.
 
 Fires when a websocket connection is successfully negotiated. `ws` is in the
 `OPEN` state.
@@ -310,6 +312,12 @@ The underlying socket for this connection.
 
 #### Event: 'open'
 
+`function (response) { }`
+
+`response` -
+[http.IncomingMessage](http://nodejs.org/docs/latest/api/http.html#http_http_incomingmessage)
+ - the HTTP response from the upgrade request.
+
 Emitted when the upgrade request succeeds and the client is in the `OPEN`
 state.
 
@@ -391,6 +399,15 @@ followed by the `close` event.
 This event fires when the underlying socket connection is closed. It is
 guaranteed to fire, unlike `closeMessage`.
 
+#### Event: 'error'
+
+`function (error) { }`
+
+`error` - `Error`. If this error is due to a problem with the websocket
+protocol, `error.statusCode` is set. See
+[RFC6455 Section 11.7](https://tools.ietf.org/html/rfc6455#section-11.7) for
+a list of status codes and their meanings.
+
 ## Performance
 
 ```
@@ -418,7 +435,6 @@ we would have to have a native add-on.
 
 ## Roadmap
 
- * client ws should error if server disobeys protocol
  * close() should work differently depending on client or server
  * sendStream: send as unfragmented if length is present
  * when client tries to send message if there is a stream ongoing, it queues
@@ -431,4 +447,3 @@ we would have to have a native add-on.
  * Supports
    [permessage-deflate](http://tools.ietf.org/html/draft-ietf-hybi-permessage-compression-19)
    extension
- * Performant

@@ -16,7 +16,8 @@ describe("server", function() {
       maxFrameSize: Infinity,
       origin: null,
     });
-    wss.on('connection', function(ws) {
+    wss.on('connection', function(ws, request) {
+      assert.strictEqual(request.url, "/huzzah");
       ws.on('streamMessage', function(msg, isUtf8, len) {
         assert.strictEqual(isUtf8, true);
         assert.strictEqual(len, 5);
@@ -33,14 +34,14 @@ describe("server", function() {
         host: 'localhost',
         protocol: 'ws',
         port: httpServer.address().port,
-        path: '/',
+        path: '/huzzah',
         allowBinaryMessages: true,
         maxFrameSize: Infinity,
       };
       var client = yawl.createClient(options);
-      client.on('open', function() {
+      client.on('open', function(response) {
+        assert.ok(response);
         assert.ok(client.socket);
-        assert.ok(client.upgradeHead);
         client.sendText("hello");
       });
       client.on('closeMessage', function(statusCode, reason) {
@@ -107,8 +108,53 @@ describe("server", function() {
     wss.on('connection', function(ws) {
       ws.on('textMessage', function(message) {
         assert.strictEqual(message, "how would you like your very own message?");
-        ws.sendBinary(new Buffer([0x100, 0x101, 0x102]));
+        ws.sendBinary(new Buffer([100, 101, 102]));
       });
+    });
+    httpServer.listen(function() {
+      var options = {
+        host: 'localhost',
+        protocol: 'ws',
+        port: httpServer.address().port,
+        path: '/',
+        allowBinaryMessages: true,
+      };
+      var client = yawl.createClient(options);
+      client.on('open', function() {
+        client.sendText("how would you like your very own message?");
+      });
+      var gotMessage = false;
+      client.on('binaryMessage', function(message) {
+        assert.strictEqual(message[0], 100);
+        assert.strictEqual(message[1], 101);
+        assert.strictEqual(message[2], 102);
+        client.close();
+        gotMessage = true;
+      });
+      client.on('close', function() {
+        assert.strictEqual(gotMessage, true);
+        httpServer.close(cb);
+      });
+    });
+  });
+
+  it("client emits error when server misbehaves", function(cb) {
+    var httpServer = http.createServer();
+    var wss = yawl.createServer({
+      server: httpServer,
+      origin: null,
+    });
+    var serverGotClose = false;
+    var serverSeesClientClose = false;
+    wss.on('connection', function(ws) {
+      ws.on('closeMessage', function(statusCode, message) {
+        assert.strictEqual(statusCode, 1002, 'invalid reserve bits');
+        serverGotClose = true;
+      });
+      ws.on('close', function() {
+        serverSeesClientClose = true;
+      });
+      ws.socket.write("trash data");
     });
     httpServer.listen(function() {
       var options = {
@@ -118,16 +164,23 @@ describe("server", function() {
         path: '/',
       };
       var client = yawl.createClient(options);
+      var errorOccurred = false;
+      var gotOpen = false;
       client.on('open', function() {
-        client.sendText("how would you like your very own message?");
+        gotOpen = true;
       });
-      client.on('binaryMessage', function(message) {
-        assert.strictEqual(message[0], 0x100);
-        assert.strictEqual(message[1], 0x101);
-        assert.strictEqual(message[2], 0x102);
-        client.close();
+      client.on('error', function(err) {
+        assert.strictEqual(err.statusCode, 1002);
+        errorOccurred = true;
+      });
+      client.on('closeMessage', function(statusCode, message) {
+        throw new Error("did not expect client close message");
       });
       client.on('close', function() {
+        assert.strictEqual(errorOccurred, true);
+        assert.strictEqual(serverGotClose, true);
+        assert.strictEqual(serverSeesClientClose, true);
+        assert.strictEqual(gotOpen, true);
         httpServer.close(cb);
       });
     });
