@@ -7,7 +7,7 @@ var describe = global.describe;
 var it = global.it;
 
 describe("server", function() {
-  it("fragmented messages", function(cb) {
+  it("fragmented messages with maxFrameSize Infinity", function(cb) {
     var httpServer = http.createServer();
     var wss = yawl.createServer({
       server: httpServer,
@@ -136,6 +136,60 @@ describe("server", function() {
       });
       client.on('close', function() {
         assert.strictEqual(gotMessage, true);
+        httpServer.close(cb);
+      });
+    });
+  });
+
+  it("streaming messages", function(cb) {
+    var httpServer = http.createServer();
+    var wss = yawl.createServer({
+      server: httpServer,
+      allowTextMessages: true,
+      allowBinaryMessages: true,
+      allowFragmentedMessages: true,
+      origin: null,
+    });
+    wss.on('connection', function(ws) {
+      ws.on('textMessage', function(message) {
+        ws.sendText(message);
+      });
+      ws.on('binaryMessage', function(message) {
+        ws.sendBinary(message);
+      });
+      ws.on('streamMessage', function(stream, isUtf8, length) {
+        stream.pipe(ws.sendStream(isUtf8, length));
+      });
+    });
+    httpServer.listen(function() {
+      var options = {
+        host: 'localhost',
+        protocol: 'ws',
+        port: httpServer.address().port,
+        path: '/',
+        allowBinaryMessages: true,
+        allowTextMessages: true,
+        allowFragmentedMessages: true,
+      };
+      var client = yawl.createClient(options);
+      client.on('open', function() {
+        var stream = client.sendStream(true);
+        stream.write("this is the first fragment");
+        stream.write("this is the second fragment");
+        stream.end();
+      });
+      client.on('streamMessage', function(stream, isUtf8, length) {
+        assert.strictEqual(isUtf8, true);
+        assert.equal(length, null);
+        var bl = new BufferList();
+        stream.pipe(bl);
+        bl.on('finish', function() {
+          assert.strictEqual(bl.toString('utf8'),
+            "this is the first fragmentthis is the second fragment");
+          client.close();
+        });
+      });
+      client.on('close', function() {
         httpServer.close(cb);
       });
     });

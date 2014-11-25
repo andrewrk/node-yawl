@@ -92,6 +92,8 @@ var CONTROL_FRAME_STATE = [
 
 var BUFFER_NO_DEBUG = false; // TODO revert
 
+var FOUR_BYTES_OF_TRASH = new Buffer(4);
+
 function createServer(options) {
   return new WebSocketServer(options);
 }
@@ -511,18 +513,23 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
         }
         continue;
       case STATE_STREAM_DATA:
-        if (this.buffer.length < 1) break outer;
         var bytesLeftInFrame = this.payloadLen - this.frameOffset;
         amtToRead = Math.min(this.buffer.length, bytesLeftInFrame);
-        slice = this.buffer.slice(0, amtToRead)
-        maskMangle(this, slice);
-        encoding = (this.msgOpcode === OPCODE_BINARY_FRAME) ? undefined : 'utf8';
-        this.msgStream.write(slice, encoding, pend.hold());
-        this.buffer.consume(amtToRead);
-        this.frameOffset += amtToRead;
-        if (this.fin && bytesLeftInFrame === amtToRead) {
-          this.msgStream.end();
-          this.msgStream = null;
+        if (amtToRead === 0) {
+          if (!this.fin || bytesLeftInFrame !== 0) break outer;
+        } else {
+          slice = this.buffer.slice(0, amtToRead)
+          maskMangle(this, slice);
+          encoding = (this.msgOpcode === OPCODE_BINARY_FRAME) ? undefined : 'utf8';
+          this.msgStream.write(slice, encoding, pend.hold());
+          this.buffer.consume(amtToRead);
+          this.frameOffset += amtToRead;
+        }
+        if (bytesLeftInFrame === amtToRead) {
+          if (this.fin) {
+            this.msgStream.end();
+            this.msgStream = null;
+          }
           this.state = STATE_START;
         }
         continue;
@@ -586,14 +593,10 @@ WebSocketClient.prototype.sendStream = function(sendAsUtf8Text, length, options)
 
   this.sendingStream.on('finish', function() {
     this.sendingStream = null;
-    // 2 bytes for frame header + 4 bytes mask
-    var header = new Buffer(6);
-    // 1 0 0 0 0000
-    header[0] = 128;
-    // 1 0000000
-    header[1] = 128;
     // don't care about the mask value. the payload is empty.
-    this.push(header);
+    var mask = this.maskDirectionOut ? FOUR_BYTES_OF_TRASH : null;
+    // 1 0 0 0 0000
+    this.push(getHeaderBuffer(128, 0, mask));
   }.bind(this));
 
   return this.sendingStream;

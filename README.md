@@ -496,6 +496,7 @@ we would have to have a native add-on.
 
 ## Roadmap
 
+ * add allowUnfragmentedMessages
  * RFC 6455 compliance and test suite, autobahn?
  * Support
    [permessage-deflate](http://tools.ietf.org/html/draft-ietf-hybi-permessage-compression-19)
