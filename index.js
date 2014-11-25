@@ -407,14 +407,19 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
             return;
           }
         } else {
-          if (this.opcode === OPCODE_TEXT_FRAME && !this.allowTextMessages) {
+          if (this.msgStream) {
+            if (this.opcode !== OPCODE_CONTINUATION_FRAME) {
+              failConnection(this, 1002, "expected continuation frame");
+              return;
+            }
+          } else if (this.opcode === OPCODE_CONTINUATION_FRAME) {
+            failConnection(this, 1002, "invalid continuation frame");
+            return;
+          } else if (this.opcode === OPCODE_TEXT_FRAME && !this.allowTextMessages) {
             failConnection(this, 1003, "text messages not allowed");
             return;
           } else if (this.opcode === OPCODE_BINARY_FRAME && !this.allowBinaryMessages) {
             failConnection(this, 1003, "binary messages not allowed");
-            return;
-          } else if (this.opcode === OPCODE_CONTINUATION_FRAME && !this.msgStream) {
-            failConnection(this, 1002, "invalid continuation frame");
             return;
           } else if (!this.fin && !this.allowFragmentedMessages) {
             failConnection(this, 1009, "fragmented messages not allowed");
