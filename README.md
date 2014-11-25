@@ -209,9 +209,13 @@ Defaults to `false`. If you set this to `true`, you must listen to the
 which you do not know the total size until the message is completely sent.
 Defaults to `false`.
 
+If you set this to `true` be sure to handle the `streamMessage` event. Even
+if you are not interested in a particular message you must consume the stream.
+
 #### wss.setMaxFrameSize(value)
 
 `Number`. Maximum number of bytes acceptable for non-fragmented messages.
+Defaults to 8MB.
 
 If a client attempts to transmit a larger message, the connection is closed
 according to the specification. Valid messages are buffered. Text messages
@@ -219,7 +223,9 @@ arrive with the `textMessage` event and binary messages arrive with the
 `binaryMessage` event.
 
 If this number is set to `Infinity`, then all messages are streaming messages
-and arrive with the `streamMessage` event. Defaults to 8MB.
+and arrive with the `streamMessage` event. If you do this, be sure to handle
+the `streamMessage` event. Even if you are not interested in a particular
+message you must consume the stream.
 
 #### Event: 'negotiate'
 
@@ -276,13 +282,13 @@ If this websocket client does not represent a client connected to a server,
 `buffer` will be modified in place. Make a copy of the buffer if you do not
 want this to happen.
 
-#### ws.sendStream([length], [isUtf8], [options])
+#### ws.sendStream([isUtf8], [length], [options])
 
- * `length` (optional) - `Number`. If supplied, this message will be sent
-   unfragmented, otherwise will be sent fragmented.
  * `isUtf8` (optional) - `Boolean`. If `true` this message will be sent as
    UTF-8 encoded text message. Otherwise, this message will be sent as a
    binary message.
+ * `length` (optional) - `Number`. If supplied, this message will be sent
+   unfragmented, otherwise will be sent fragmented.
  * `options` (optional):
    - `highWaterMark` - `Number` - Buffer level when `write()` starts returning
      `false`. Default 16KB.
@@ -398,7 +404,8 @@ Fragmented messages never arrive in this event.
 
 `function (stream, isUtf8, length) { }`
 
- * `stream` - `ReadableStream`.
+ * `stream` - `ReadableStream`. You must consume this stream. If you are not
+   interested in this message, call `stream.resume()` to trash the data.
  * `isUtf8` - `Boolean`. Tells whether stream was sent as a UTF-8 text message.
  * `length` - `Number`. If `null`, this is a fragmented message. Otherwise,
   the total size of the stream is known beforehand.
@@ -490,7 +497,7 @@ we would have to have a native add-on.
 ## Roadmap
 
  * RFC 6455 compliance and test suite, autobahn?
- * Supports
+ * Support
    [permessage-deflate](http://tools.ietf.org/html/draft-ietf-hybi-permessage-compression-19)
    extension
  * sendStream: send as unfragmented if length is present

@@ -90,7 +90,7 @@ var CONTROL_FRAME_STATE = [
   STATE_PONG_FRAME,  // pong
 ];
 
-var BUFFER_NO_DEBUG = true;
+var BUFFER_NO_DEBUG = false; // TODO revert
 
 function createServer(options) {
   return new WebSocketServer(options);
@@ -557,7 +557,7 @@ WebSocketClient.prototype.sendBinary = function(buffer, sendAsUtf8Text) {
   this.push(buffer);
 };
 
-WebSocketClient.prototype.sendStream = function(length, sendAsUtf8Text, options) {
+WebSocketClient.prototype.sendStream = function(sendAsUtf8Text, length, options) {
   if (this.sendingStream) {
     throw new Error("send stream already in progress");
   }
@@ -690,7 +690,7 @@ function getHeaderBuffer(byte1, size, mask) {
     b[0] = byte1;
     b[1] = size|maskBit;
     if (mask) mask.copy(b, 2);
-  } else if (size <= 65536) {
+  } else if (size <= 65535) {
     b = new Buffer(4 + maskSize);
     b[0] = byte1;
     b[1] = 126|maskBit;

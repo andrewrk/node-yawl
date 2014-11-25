@@ -19,7 +19,8 @@
     "rfc-6455",
     "server",
     "client",
-    "websockets"
+    "websockets",
+    "autobahn"
   ],
   "main": "index.js",
   "author": "Andrew Kelley <superjoe30@gmail.com>",

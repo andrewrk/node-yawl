@@ -105,9 +105,12 @@ describe("server", function() {
       allowBinaryMessages: true,
       origin: null,
     });
+    var buf = new Buffer(65536);
+    buf.fill('a');
+    var str = buf.toString('utf8');
     wss.on('connection', function(ws) {
       ws.on('textMessage', function(message) {
-        assert.strictEqual(message, "how would you like your very own message?");
+        assert.strictEqual(message, str);
         ws.sendBinary(new Buffer([100, 101, 102]));
       });
     });
@@ -121,7 +124,7 @@ describe("server", function() {
       };
       var client = yawl.createClient(options);
       client.on('open', function() {
-        client.sendText("how would you like your very own message?");
+        client.sendText(str);
       });
       var gotMessage = false;
       client.on('binaryMessage', function(message) {
@@ -185,6 +188,8 @@ describe("server", function() {
     assert.deepEqual(yawl.parseExtensionList({headers: {}}), null);
   });
 
+  it("parseExtensionList complicated");
+  /*
   it("parseExtensionList complicated", function() {
     var request = {
       headers: {
@@ -221,4 +226,5 @@ describe("server", function() {
     ];
     assert.deepEqual(yawl.parseExtensionList(request), expected);
   });
+  */
 });
