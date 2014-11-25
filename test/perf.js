@@ -1,6 +1,7 @@
 var yawl = require('../');
 var http = require('http');
 var url = require('url');
+var humanSize = require('human-size');
 
 var ws;
 try {
@@ -8,19 +9,21 @@ try {
 } catch (err) {}
 
 // generate a big file
-var bigFileSize = 20 * 1024 * 1024;
+var bigFileSize = 100 * 1024 * 1024;
 var bigFileBuffer = new Buffer(bigFileSize);
 
 var tests = [
   {
-    name: "yawl",
+    name: "big buffer (yawl)",
     fn: perfTestYawl,
     req: noop,
+    size: bigFileSize,
   },
   {
-    name: "ws",
+    name: "big buffer (ws)",
     fn: perfTestWs,
     req: function() { return ws ? null : 'npm install ws'; },
+    size: bigFileSize,
   },
 ];
 
@@ -46,7 +49,8 @@ function doOneTest() {
   test.fn(function() {
     var end = new Date();
     var elapsed = (end - start) / 1000;
-    process.stderr.write(elapsed.toFixed(2) + "s\n");
+    var rate = test.size / elapsed;
+    process.stderr.write(elapsed.toFixed(2) + "s  " + humanSize(rate) + "/s\n");
     doOneTest();
   });
 }

@@ -5,6 +5,7 @@ var crypto = require('crypto');
 var http = require('http');
 var https = require('https');
 var Pend = require('pend');
+var BufferList = require('bl');
 
 exports.createServer = createServer;
 exports.createClient = createClient;
@@ -312,7 +313,7 @@ function WebSocketClient(options) {
 
   this.error = null;
   this.state = STATE_START;
-  this.buffer = new Buffer(0);
+  this.buffer = new BufferList();
 
   this.fin = 0;
   this.rsv1 = 0;
@@ -336,7 +337,7 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
     return;
   }
 
-  this.buffer = Buffer.concat([this.buffer, buf]);
+  this.buffer.append(buf);
 
   var pend = new Pend();
 
@@ -411,7 +412,7 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
         } else {
           this.state = STATE_HAVE_LEN;
         }
-        this.buffer = this.buffer.slice(2);
+        this.buffer.consume(2);
         continue;
       case STATE_HAVE_LEN:
         if (this.fin && this.payloadLen > this.maxFrameSize) {
@@ -438,25 +439,25 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
       case STATE_PAYLOAD_LEN_16:
         if (this.buffer.length < 2) break outer;
         this.payloadLen = this.buffer.readUInt16BE(0);
-        this.buffer = this.buffer.slice(2);
+        this.buffer.consume(2);
         this.state = STATE_HAVE_LEN;
         continue;
       case STATE_PAYLOAD_LEN_64:
         if (this.buffer.length < 8) break outer;
         this.payloadLen = readUInt64BE(this.buffer, 0);
-        this.buffer = this.buffer.slice(8);
+        this.buffer.consume(8);
         this.state = STATE_HAVE_LEN;
         continue;
       case STATE_MASK_KEY:
         if (this.buffer.length < 4) break outer;
         this.buffer.copy(this.mask, 0, 0, 4);
-        this.buffer = this.buffer.slice(4);
+        this.buffer.consume(4);
         this.state = this.maskNextState;
         continue;
       case STATE_CLOSE_FRAME:
         if (this.buffer.length < this.payloadLen) break outer;
         slice = this.buffer.slice(0, this.payloadLen);
-        this.buffer = this.buffer.slice(this.payloadLen);
+        this.buffer.consume(this.payloadLen);
         maskMangle(this, slice);
         var statusCode = (slice.length >= 2) ? slice.readUInt16BE(0) : 1005;
         var message = (slice.length >= 2) ? slice.toString('utf8', 2) : "";
@@ -466,7 +467,7 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
       case STATE_PING_FRAME:
         if (this.buffer.length < this.payloadLen) break outer;
         slice = this.buffer.slice(0, this.payloadLen);
-        this.buffer = this.buffer.slice(this.payloadLen);
+        this.buffer.consume(this.payloadLen);
         maskMangle(this, slice);
         this.state = STATE_START;
         this.emit('pingMessage', slice);
@@ -475,7 +476,7 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
       case STATE_PONG_FRAME:
         if (this.buffer.length < this.payloadLen) break outer;
         slice = this.buffer.slice(0, this.payloadLen);
-        this.buffer = this.buffer.slice(this.payloadLen);
+        this.buffer.consume(this.payloadLen);
         maskMangle(this, slice);
         this.state = STATE_START;
         this.emit('pongMessage', slice);
@@ -483,7 +484,7 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
       case STATE_BUFFER_DATA:
         if (this.buffer.length < this.payloadLen) break outer;
         slice = this.buffer.slice(0, this.payloadLen);
-        this.buffer = this.buffer.slice(this.payloadLen);
+        this.buffer.consume(this.payloadLen);
         maskMangle(this, slice);
         this.state = STATE_START;
         if (this.opcode === OPCODE_TEXT_FRAME) {
@@ -500,7 +501,7 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
         maskMangle(this, slice);
         encoding = (this.msgOpcode === OPCODE_BINARY_FRAME) ? undefined : 'utf8';
         this.msgStream.write(slice, encoding, pend.hold());
-        this.buffer = this.buffer.slice(amtToRead);
+        this.buffer.consume(amtToRead);
         this.frameOffset += amtToRead;
         if (this.fin && bytesLeftInFrame === amtToRead) {
           this.msgStream.end();
