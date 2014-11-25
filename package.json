@@ -25,11 +25,11 @@
   "author": "Andrew Kelley <superjoe30@gmail.com>",
   "license": "MIT",
   "dependencies": {
+    "bl": "~0.9.3",
     "pend": "~1.2.0"
   },
   "devDependencies": {
-    "mocha": "~2.0.1",
-    "streamsink": "~1.2.0"
+    "mocha": "~2.0.1"
   },
   "directories": {
     "test": "test"

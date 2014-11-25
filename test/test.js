@@ -2,7 +2,7 @@ var yawl = require('../');
 var url = require('url');
 var http = require('http');
 var assert = require('assert');
-var StreamSink = require('streamsink');
+var BufferList = require('bl');
 var describe = global.describe;
 var it = global.it;
 
@@ -20,10 +20,10 @@ describe("server", function() {
       ws.on('streamMessage', function(msg, isUtf8, len) {
         assert.strictEqual(isUtf8, true);
         assert.strictEqual(len, 5);
-        var ss = new StreamSink();
-        msg.pipe(ss);
-        ss.on('finish', function() {
-          assert.strictEqual(ss.toString('utf8'), "hello")
+        var bl = new BufferList();
+        msg.pipe(bl);
+        bl.on('finish', function() {
+          assert.strictEqual(bl.toString('utf8'), "hello")
           ws.sendBinary(new Buffer([0x1, 0x3, 0x3, 0x7]));
         });
       });
@@ -49,10 +49,10 @@ describe("server", function() {
       client.on('streamMessage', function(msg, isUtf8, len) {
         assert.strictEqual(isUtf8, false);
         assert.strictEqual(len, 4);
-        var ss = new StreamSink();
-        msg.pipe(ss);
-        ss.on('finish', function() {
-          var buf = ss.toBuffer();
+        var bl = new BufferList();
+        msg.pipe(bl);
+        bl.on('finish', function() {
+          var buf = bl.slice();
           assert.strictEqual(buf[0], 0x1);
           assert.strictEqual(buf[1], 0x3);
           assert.strictEqual(buf[2], 0x3);
