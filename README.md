@@ -12,13 +12,15 @@ TODO (work in progress)
      Instead this module will silently ignore encoding errors just like the
      rest of your Node.js code.
    - "payload length" field is limited to `2^52` instead of `2^64`. JavaScript
-     numbers are all 64-bit double precision floating point which have a 53-bit
+     numbers are all 64-bit double precision floating point which have a 52-bit
      significand precision.
  * Uses streams and handles backpressure correctly.
  * Low level without sacrificing clean abstractions.
  * [Secure by default](https://en.wikipedia.org/wiki/Secure_by_default),
    [secure by design](https://en.wikipedia.org/wiki/Secure_by_design)
  * JavaScript implementation. No compiler required.
+ * As performant as a pure JavaScript implementation is going to get. See the
+   performance section below for details.
  * Built for Node.js only. No hacky code to make it also work in the browser.
 
 ## Server Usage
@@ -389,15 +391,40 @@ followed by the `close` event.
 This event fires when the underlying socket connection is closed. It is
 guaranteed to fire, unlike `closeMessage`.
 
+## Performance
+
+```
+$ date
+Mon Nov 24 19:15:34 MST 2014
+$ node test/perf.js
+big buffer echo (yawl): 0.65s  154MB/s
+big buffer echo (ws): 0.58s  171MB/s
+many small buffers (yawl): 0.38s  12MB/s
+many small buffers (ws): 0.24s  20MB/s
+```
+
+The bottleneck is in the masking code:
+
+```js
+function maskMangleBuf(buffer, mask) {
+  for (var i = 0; i < buffer.length; i += 1) {
+    buffer[i] = buffer[i] ^ mask[i % 4];
+  }
+}
+```
+
+This is as fast as it's going to get in JavaScript. To make this module faster
+we would have to have a native add-on.
+
 ## Roadmap
 
- * use bl module
  * client ws should error if server disobeys protocol
  * close() should work differently depending on client or server
  * sendStream: send as unfragmented if length is present
  * when client tries to send message if there is a stream ongoing, it queues
    the data instead of erroring
  * handleUpgrade error handling?
+ * ability to detach from and attach to http servers
  * RFC 6455 compliance and test suite, autobahn?
    - parseExtensionList
  * Auto heartbeat

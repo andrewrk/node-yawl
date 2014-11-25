@@ -85,6 +85,8 @@ var CONTROL_FRAME_STATE = [
   STATE_PONG_FRAME,  // pong
 ];
 
+var BUFFER_NO_DEBUG = true;
+
 function createServer(options) {
   return new WebSocketServer(options);
 }
@@ -350,7 +352,7 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
       case STATE_START:
         if (this.buffer.length < 2) break outer;
 
-        b = this.buffer.readUInt8(0);
+        b = this.buffer.readUInt8(0, BUFFER_NO_DEBUG);
         this.fin    = getBits(b, 0, 1);
         this.rsv1   = getBits(b, 1, 1);
         this.rsv2   = getBits(b, 2, 1);
@@ -367,7 +369,7 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
           return;
         }
 
-        b = this.buffer.readUInt8(1);
+        b = this.buffer.readUInt8(1, BUFFER_NO_DEBUG);
         this.maskBit    = getBits(b, 0, 1);
         this.payloadLen = getBits(b, 1, 7);
 
@@ -438,7 +440,7 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
         continue;
       case STATE_PAYLOAD_LEN_16:
         if (this.buffer.length < 2) break outer;
-        this.payloadLen = this.buffer.readUInt16BE(0);
+        this.payloadLen = this.buffer.readUInt16BE(0, BUFFER_NO_DEBUG);
         this.buffer.consume(2);
         this.state = STATE_HAVE_LEN;
         continue;
@@ -459,7 +461,7 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
         slice = this.buffer.slice(0, this.payloadLen);
         this.buffer.consume(this.payloadLen);
         maskMangle(this, slice);
-        var statusCode = (slice.length >= 2) ? slice.readUInt16BE(0) : 1005;
+        var statusCode = (slice.length >= 2) ? slice.readUInt16BE(0, BUFFER_NO_DEBUG) : 1005;
         var message = (slice.length >= 2) ? slice.toString('utf8', 2) : "";
         this.emit('closeMessage', statusCode, message);
         this.close();
@@ -572,9 +574,9 @@ WebSocketClient.prototype.sendStream = function(length, sendAsUtf8Text, options)
     // 2 bytes for frame header + 4 bytes mask
     var header = new Buffer(6);
     // 1 0 0 0 0000
-    header.writeUInt8(128, 0);
+    header[0] = 128;
     // 1 0000000
-    header.writeUInt8(128, 1);
+    header[1] = 128;
     // don't care about the mask value. the payload is empty.
     this.push(header);
   }.bind(this));
@@ -591,7 +593,7 @@ WebSocketClient.prototype.sendCloseWithMessage = function(statusCode, message) {
   // 2 extra bytes for status code
   // 1 0 0 0 1000
   var header = getHeaderBuffer(136, 2 + msgBuffer.length, mask, 2);
-  header.writeUInt16BE(statusCode, header.length - 2);
+  header.writeUInt16BE(statusCode, header.length - 2, BUFFER_NO_DEBUG);
   this.push(header);
   this.push(msgBuffer);
 };
@@ -665,19 +667,19 @@ function getHeaderBuffer(byte1, size, mask, extraSize) {
   var maskSize = mask ? 4 : 0;
   if (size <= 125) {
     b = new Buffer(2 + maskSize + extraSize);
-    b.writeUInt8(byte1, 0);
-    b.writeUInt8(size|maskBit, 1);
+    b[0] = byte1;
+    b[1] = size|maskBit;
     if (mask) mask.copy(b, 2);
   } else if (size <= 65536) {
     b = new Buffer(4 + maskSize + extraSize);
-    b.writeUInt8(byte1, 0);
-    b.writeUInt8(126|maskBit, 1);
-    b.writeUInt16BE(size, 2);
+    b[0] = byte1;
+    b[1] = 126|maskBit;
+    b.writeUInt16BE(size, 2, BUFFER_NO_DEBUG);
     if (mask) mask.copy(b, 4);
   } else {
     b = new Buffer(10 + maskSize + extraSize);
-    b.writeUInt8(byte1, 0);
-    b.writeUInt8(127|maskBit, 1);
+    b[0] = byte1;
+    b[1] = 127|maskBit;
     writeUInt64BE(b, size, 2);
     if (mask) mask.copy(b, 10);
   }
@@ -746,16 +748,16 @@ function getBits(b, start, len) {
 }
 
 function readUInt64BE(buffer, offset) {
-  var big   = buffer.readUInt32BE(offset);
-  var small = buffer.readUInt32BE(offset + 4);
+  var big   = buffer.readUInt32BE(offset, BUFFER_NO_DEBUG);
+  var small = buffer.readUInt32BE(offset + 4, BUFFER_NO_DEBUG);
   return big * 0x100000000 + small;
 }
 
 function writeUInt64BE(buffer, value, offset) {
   var big = Math.floor(value / 0x100000000);
   var small = value - big;
-  buffer.writeUInt32BE(big, offset);
-  buffer.writeUInt32BE(small, offset + 4);
+  buffer.writeUInt32BE(big, offset, BUFFER_NO_DEBUG);
+  buffer.writeUInt32BE(small, offset + 4, BUFFER_NO_DEBUG);
 }
 
 function rando(size) {

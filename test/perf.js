@@ -1,6 +1,7 @@
 var yawl = require('../');
 var http = require('http');
 var url = require('url');
+var crypto = require('crypto');
 var humanSize = require('human-size');
 
 var ws;
@@ -10,24 +11,45 @@ try {
 
 // generate a big file
 var bigFileSize = 100 * 1024 * 1024;
-var bigFileBuffer = new Buffer(bigFileSize);
+var bigFileBuffer = crypto.pseudoRandomBytes(bigFileSize);
+
+var smallBufCount = 10000 //100000;
+var smallBufs = new Array(smallBufCount);
+var totalSmallBufsSize = 0;
+for (var i = 0; i < smallBufCount; i += 1) {
+  var buf = crypto.pseudoRandomBytes(Math.floor(Math.random() * 1000 + 1));
+  totalSmallBufsSize += buf.length;
+  smallBufs[i] = buf;
+}
+
+var search = process.argv[2];
 
 var tests = [
   {
-    name: "big buffer (yawl)",
-    fn: perfTestYawl,
+    name: "big buffer echo (yawl)",
+    fn: bigBufferYawl,
     req: noop,
     size: bigFileSize,
   },
   {
-    name: "big buffer (ws)",
-    fn: perfTestWs,
+    name: "big buffer echo (ws)",
+    fn: bigBufferWs,
     req: function() { return ws ? null : 'npm install ws'; },
     size: bigFileSize,
   },
+  {
+    name: "many small buffers (yawl)",
+    fn: smallBufferYawl,
+    req: noop,
+    size: totalSmallBufsSize,
+  },
+  {
+    name: "many small buffers (ws)",
+    fn: smallBufferWs,
+    req: noop,
+    size: totalSmallBufsSize,
+  },
 ];
-
-shuffle(tests);
 
 var testIndex = 0;
 doOneTest();
@@ -36,6 +58,10 @@ function doOneTest() {
   var test = tests[testIndex++];
   if (!test) {
     console.error("done");
+    return;
+  }
+  if (search && test.name.indexOf(search) === -1) {
+    doOneTest();
     return;
   }
   process.stderr.write(test.name + ": ");
@@ -55,7 +81,7 @@ function doOneTest() {
   });
 }
 
-function perfTestYawl(cb) {
+function bigBufferYawl(cb) {
   var httpServer = http.createServer();
   var wss = yawl.createServer({
     server: httpServer,
@@ -88,7 +114,7 @@ function perfTestYawl(cb) {
   });
 }
 
-function perfTestWs(cb) {
+function bigBufferWs(cb) {
   var httpServer = http.createServer();
   var wss = new ws.Server({
     server: httpServer,
@@ -110,15 +136,70 @@ function perfTestWs(cb) {
   });
 }
 
-function noop() { }
-
-function shuffle(array) {
-  var counter = array.length;
-
-  while (counter) {
-    var index = Math.floor(Math.random() * counter--);
-    var tmp = array[counter];
-    array[counter] = array[index];
-    array[index] = tmp;
-  }
+function smallBufferYawl(cb) {
+  var httpServer = http.createServer();
+  var wss = yawl.createServer({
+    server: httpServer,
+    allowBinaryMessages: true,
+    origin: null,
+  });
+  wss.on('connection', function(ws) {
+    ws.on('binaryMessage', function(buffer) {
+      ws.sendBinary(buffer);
+    });
+  });
+  httpServer.listen(function() {
+    var options = {
+      host: 'localhost',
+      protocol: 'ws',
+      port: httpServer.address().port,
+      path: '/',
+      allowBinaryMessages: true,
+      maxFrameSize: bigFileSize,
+    };
+    var client = yawl.createClient(options);
+    client.on('open', function() {
+      smallBufs.forEach(function(buf) {
+        client.sendBinary(buf);
+      });
+    });
+    var count = 0;
+    client.on('binaryMessage', function(buffer) {
+      count += 1;
+      if (count === smallBufCount) {
+        client.close();
+        httpServer.close(cb);
+      }
+    });
+  });
 }
+
+function smallBufferWs(cb) {
+  var httpServer = http.createServer();
+  var wss = new ws.Server({
+    server: httpServer,
+  });
+  wss.on('connection', function(ws) {
+    ws.on('message', function(buffer) {
+      ws.send(buffer);
+    });
+  });
+  httpServer.listen(function() {
+    var client = new ws('ws://localhost:' + httpServer.address().port + '/');
+    client.on('open', function() {
+      smallBufs.forEach(function(buf) {
+        client.send(buf);
+      });
+    });
+    var count = 0;
+    client.on('message', function(buffer) {
+      count += 1;
+      if (count === smallBufCount) {
+        client.close();
+        httpServer.close(cb);
+      }
+    });
+  });
+}
+
+function noop() { }
