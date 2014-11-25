@@ -590,30 +590,6 @@ WebSocketClient.prototype.sendStream = function(length, sendAsUtf8Text, options)
   return this.sendingStream;
 };
 
-WebSocketClient.prototype.sendCloseWithMessage = function(statusCode, message) {
-  var msgBuffer = new Buffer(125);
-  var bytesWritten = msgBuffer.write(message, 2, 123, 'utf8');
-  if (Buffer._charsWritten !== message.length) {
-    throw new Error("close message too long");
-  }
-  msgBuffer.writeUInt16BE(statusCode, 0, BUFFER_NO_DEBUG);
-  msgBuffer = msgBuffer.slice(0, bytesWritten + 2);
-  var mask = this.maskDirectionOut ? rando(4) : null;
-  // 2 extra bytes for status code
-  // 1 0 0 0 1000
-  var header = getHeaderBuffer(136, msgBuffer.length, mask);
-  if (mask) maskMangleBuf(msgBuffer, mask);
-  this.push(header);
-  this.push(msgBuffer);
-};
-
-WebSocketClient.prototype.sendCloseBare = function() {
-  var mask = this.maskDirectionOut ? rando(4) : null;
-  // 1 0 0 0 1000
-  var header = getHeaderBuffer(136, 0, mask);
-  this.push(header);
-};
-
 WebSocketClient.prototype.sendPingBinary = function(msgBuffer) {
   if (msgBuffer.length > 125) {
     throw new Error("ping message too long");
@@ -656,19 +632,45 @@ WebSocketClient.prototype.close = function(statusCode, message) {
   if (!this.isOpen()) return;
   this.state = STATE_CLOSING;
   if (statusCode == null && message == null) {
-    this.sendCloseBare();
+    sendCloseBare(this);
   } else if (statusCode != null) {
     message = message || "";
-    this.sendCloseWithMessage(statusCode, message);
+    sendCloseWithMessage(this, statusCode, message);
   } else {
-    this.sendCloseWithMessage(1000, message);
+    sendCloseWithMessage(this, 1000, message);
   }
-  this.push(null);
+  if (!this.maskDirectionOut) {
+    this.push(null);
+  }
 };
 
 WebSocketClient.prototype.isOpen = function() {
   return this.state !== STATE_CLOSING && this.state !== STATE_CLOSED;
 };
+
+function sendCloseWithMessage(client, statusCode, message) {
+  var msgBuffer = new Buffer(125);
+  var bytesWritten = msgBuffer.write(message, 2, 123, 'utf8');
+  if (Buffer._charsWritten !== message.length) {
+    throw new Error("close message too long");
+  }
+  msgBuffer.writeUInt16BE(statusCode, 0, BUFFER_NO_DEBUG);
+  msgBuffer = msgBuffer.slice(0, bytesWritten + 2);
+  var mask = client.maskDirectionOut ? rando(4) : null;
+  // 2 extra bytes for status code
+  // 1 0 0 0 1000
+  var header = getHeaderBuffer(136, msgBuffer.length, mask);
+  if (mask) maskMangleBuf(msgBuffer, mask);
+  client.push(header);
+  client.push(msgBuffer);
+}
+
+function sendCloseBare(client) {
+  var mask = client.maskDirectionOut ? rando(4) : null;
+  // 1 0 0 0 1000
+  var header = getHeaderBuffer(136, 0, mask);
+  client.push(header);
+}
 
 function getHeaderBuffer(byte1, size, mask) {
   var b;

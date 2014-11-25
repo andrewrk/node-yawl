@@ -145,14 +145,10 @@ describe("server", function() {
       origin: null,
     });
     var serverGotClose = false;
-    var serverSeesClientClose = false;
     wss.on('connection', function(ws) {
       ws.on('closeMessage', function(statusCode, message) {
         assert.strictEqual(statusCode, 1002, 'invalid reserve bits');
         serverGotClose = true;
-      });
-      ws.on('close', function() {
-        serverSeesClientClose = true;
       });
       ws.socket.write("trash data");
     });
@@ -179,7 +175,6 @@ describe("server", function() {
       client.on('close', function() {
         assert.strictEqual(errorOccurred, true);
         assert.strictEqual(serverGotClose, true);
-        assert.strictEqual(serverSeesClientClose, true);
         assert.strictEqual(gotOpen, true);
         httpServer.close(cb);
       });

@@ -250,22 +250,21 @@ websocket client does not represent a client connected to a server, the buffer
 you pass to `write()` will be modified in place. Make a copy of the buffer if
 you do not want this to happen.
 
-### ws.close(statusCode, message)
+### ws.close([statusCode], [message])
 
  * `statusCode` (optional) - `Number` - See
    [RFC6455 Section 11.7](https://tools.ietf.org/html/rfc6455#section-11.7)
  * `message` (optional) - `String`. Must be no greater than 123 bytes when UTF-8
    encoded.
 
-Sends a close message.
+Sends a close message to the other endpoint. The state of the client becomes
+`CLOSING`.
 
 If the `WebSocketClient` represents a client connected to a server, the server
 closes the connection to the client without waiting for a corresonding close
 message from the client.
 
 Otherwise, the client waits for the server to close the connection.
-
-The state of the client becomes `CLOSING` until
 
 ### ws.isOpen()
 
@@ -397,7 +396,9 @@ followed by the `close` event.
 #### Event: 'close'
 
 This event fires when the underlying socket connection is closed. It is
-guaranteed to fire, unlike `closeMessage`.
+guaranteed to fire even if an error occurs, unlike `closeMessage`.
+
+When this event fires the state of the websocket is now `CLOSED`.
 
 #### Event: 'error'
 
@@ -407,6 +408,9 @@ guaranteed to fire, unlike `closeMessage`.
 protocol, `error.statusCode` is set. See
 [RFC6455 Section 11.7](https://tools.ietf.org/html/rfc6455#section-11.7) for
 a list of status codes and their meanings.
+
+When an error occurs a `WebSocketClient` closes itself, so this event is
+shortly followed by the `close` event.
 
 ## Performance
 
@@ -435,15 +439,12 @@ we would have to have a native add-on.
 
 ## Roadmap
 
- * close() should work differently depending on client or server
  * sendStream: send as unfragmented if length is present
  * when client tries to send message if there is a stream ongoing, it queues
    the data instead of erroring
  * handleUpgrade error handling?
- * ability to detach from and attach to http servers
  * RFC 6455 compliance and test suite, autobahn?
    - parseExtensionList
- * Auto heartbeat
  * Supports
    [permessage-deflate](http://tools.ietf.org/html/draft-ietf-hybi-permessage-compression-19)
    extension
