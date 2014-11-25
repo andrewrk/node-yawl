@@ -208,6 +208,14 @@ See also `yawl.parseSubProtocolList` and `yawl.parseExtensionList`.
 Fires when a websocket connection is successfully negotiated. `ws` is in the
 `OPEN` state.
 
+#### Event: 'error'
+
+`function (error) { }`
+
+If an error occurs during the upgrade process before the `connection` event,
+this event will fire. For example, if writing `400 Bad Request` due to an
+invalid websocket handshake raised an error, it would be emitted here.
+
 ### yawl.WebSocketClient
 
 #### ws.sendText(text)
@@ -439,12 +447,11 @@ we would have to have a native add-on.
 
 ## Roadmap
 
- * sendStream: send as unfragmented if length is present
- * when client tries to send message if there is a stream ongoing, it queues
-   the data instead of erroring
- * handleUpgrade error handling?
  * RFC 6455 compliance and test suite, autobahn?
    - parseExtensionList
  * Supports
    [permessage-deflate](http://tools.ietf.org/html/draft-ietf-hybi-permessage-compression-19)
    extension
+ * sendStream: send as unfragmented if length is present
+ * when client tries to send message if there is a stream ongoing, it queues
+   the data instead of erroring

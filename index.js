@@ -222,6 +222,7 @@ function handleUpgrade(server, request, socket, firstBuffer) {
     return;
   }
   if (request.headers['sec-websocket-version'] !== "13") {
+    socket.on('error', onUpgradeSocketError);
     socket.write(
       "HTTP/1.1 426 Upgrade Required\r\n" +
       "Sec-WebSocket-Version: 13\r\n" +
@@ -231,6 +232,7 @@ function handleUpgrade(server, request, socket, firstBuffer) {
     return;
   }
   if (server.origin && lowerHeader(request, 'origin') !== server.origin) {
+    socket.on('error', onUpgradeSocketError);
     socket.write(
       "HTTP/1.1 403 Forbidden\r\n" +
       "Connection: close\r\n" +
@@ -240,6 +242,7 @@ function handleUpgrade(server, request, socket, firstBuffer) {
   }
   var webSocketKey = request.headers['sec-websocket-key'];
   if (!webSocketKey) {
+    socket.on('error', onUpgradeSocketError);
     socket.write(
       "HTTP/1.1 400 Expected WebSocket Handshake Key\r\n" +
       "Connection: close\r\n" +
@@ -254,8 +257,13 @@ function handleUpgrade(server, request, socket, firstBuffer) {
     writeResponse.call(server, {});
   }
 
+  function onUpgradeSocketError(err) {
+    server.emit('error', err);
+  }
+
   function handleNegotiationResult(extraHeaders) {
     if (!extraHeaders) {
+      socket.on('error', onUpgradeSocketError);
       socket.write(
         "HTTP/1.1 400 Bad Request\r\n" +
         "Connection: close\r\n" +
