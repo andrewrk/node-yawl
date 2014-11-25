@@ -6,7 +6,7 @@ var BufferList = require('bl');
 var describe = global.describe;
 var it = global.it;
 
-describe("server", function() {
+describe("yawl", function() {
   it("fragmented messages with maxFrameSize Infinity", function(cb) {
     var httpServer = http.createServer();
     var wss = yawl.createServer({

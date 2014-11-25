@@ -296,7 +296,8 @@ message.
    - `highWaterMark` - `Number` - Buffer level when `write()` starts returning
      `false`. Default 16KB.
 
-Returns a `Writable` stream which is sent over the websocket connection.
+Returns a `Writable` stream which is sent over the websocket connection. Be
+sure to handle the `error` event of this stream.
 
 Note that any other text or binary messages you send while streaming are
 queued until the stream is finished.
@@ -423,7 +424,8 @@ Fragmented messages never arrive in this event.
 `function (stream, isUtf8, length) { }`
 
  * `stream` - `ReadableStream`. You must consume this stream. If you are not
-   interested in this message, call `stream.resume()` to trash the data.
+   interested in this message, call `stream.resume()` to trash the data. Be
+   sure to handle the `error` event of this stream.
  * `isUtf8` - `Boolean`. Tells whether stream was sent as a UTF-8 text message.
  * `length` - `Number`. If `null`, this is a fragmented message. Otherwise,
   the total size of the stream is known beforehand.

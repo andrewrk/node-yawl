@@ -128,7 +128,6 @@ function createClient(options) {
   }
   delete options.protocol;
 
-  var request = httpLib.request(options);
   var client = new WebSocketClient({
     maskDirectionOut: true,
     allowTextMessages: options.allowTextMessages,
@@ -136,6 +135,7 @@ function createClient(options) {
     allowBinaryMessages: options.allowBinaryMessages,
     maxFrameSize: options.maxFrameSize,
   });
+  var request = httpLib.request(options);
   request.on('response', onResponse);
   request.on('upgrade', onUpgrade);
   request.on('error', function(err) {
@@ -399,12 +399,10 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
           if (!this.fin) {
             failConnection(this, 1002, "control frame must set fin");
             return;
-          }
-          if (this.payloadLen > 125) {
+          } else if (this.payloadLen > 125) {
             failConnection(this, 1002, "control frame too big");
             return;
-          }
-          if (this.opcode === OPCODE_CLOSE && this.payloadLen === 1) {
+          } else if (this.opcode === OPCODE_CLOSE && this.payloadLen === 1) {
             failConnection(this, 1002, "bad payload size for close");
             return;
           }
@@ -412,17 +410,17 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
           if (this.opcode === OPCODE_TEXT_FRAME && !this.allowTextMessages) {
             failConnection(this, 1003, "text messages not allowed");
             return;
-          }
-          if (this.opcode === OPCODE_BINARY_FRAME && !this.allowBinaryMessages) {
+          } else if (this.opcode === OPCODE_BINARY_FRAME && !this.allowBinaryMessages) {
             failConnection(this, 1003, "binary messages not allowed");
             return;
-          }
-          if (!this.fin && !this.allowFragmentedMessages) {
+          } else if (this.opcode === OPCODE_CONTINUATION_FRAME && !this.msgStream) {
+            failConnection(this, 1002, "invalid continuation frame");
+            return;
+          } else if (!this.fin && !this.allowFragmentedMessages) {
             failConnection(this, 1009, "fragmented messages not allowed");
             return;
           }
         }
-
         if (this.payloadLen === 126) {
           this.state = STATE_PAYLOAD_LEN_16;
         } else if (this.payloadLen === 127) {
@@ -704,6 +702,7 @@ function handleSocketClose(client) {
 function failConnection(client, statusCode, message) {
   client.close(statusCode, message);
   if (client.maskOutBit) {
+    client.push(null);
     var err = new Error(message);
     err.statusCode = statusCode;
     handleError(client, err);
