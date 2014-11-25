@@ -492,13 +492,16 @@ shortly followed by the `close` event.
 ## Performance
 
 ```
+$ node -v
+v0.10.33
 $ date
-Mon Nov 24 19:15:34 MST 2014
+Tue Nov 25 16:22:08 MST 2014
 $ node test/perf.js
-big buffer echo (yawl): 0.65s  154MB/s
-big buffer echo (ws): 0.58s  171MB/s
-many small buffers (yawl): 0.38s  12MB/s
-many small buffers (ws): 0.24s  20MB/s
+big buffer echo (yawl): 0.51s  196MB/s
+big buffer echo (ws): 0.25s  395MB/s
+many small buffers (yawl): 0.37s  13MB/s
+many small buffers (ws): 0.25s  19MB/s
+done
 ```
 
 The bottleneck is in the masking code:
@@ -513,6 +516,29 @@ function maskMangleBuf(buffer, mask) {
 
 This is as fast as it's going to get in JavaScript. To make this module faster
 we would have to have a native add-on.
+
+## How to Run the Autobahn Tests
+
+Note that yawl additionally has its own tests which you can run using `npm test`
+as usual.
+
+[Install wstest](http://autobahn.ws/testsuite/installation.html#installation)
+
+### Test the Client
+
+ 0. In one terminal, `wstest --mode=fuzzingserver --wsuri=ws://localhost:9001`
+ 0. In another terminal, `node test/autobahn-client.js`
+ 0. Open
+    [reports/clients/index.html](http://s3.amazonaws.com/superjoe/temp/yawl/clients/index.html)
+    in a web browser.
+
+### Test the Server
+
+ 0. In one terminal, `node test/autobahn-server.js`
+ 0. In another terminal, `wstest --mode=fuzzingclient --wsuri=ws://localhost:9001`
+ 0. Open
+    [reports/servers/index.html](http://s3.amazonaws.com/superjoe/temp/yawl/servers/index.html)
+    in a web browser.
 
 ## Roadmap
 

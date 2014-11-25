@@ -578,6 +578,13 @@ WebSocketClient.prototype.sendStream = function(sendAsUtf8Text, length, options)
   client.sendingStream = new stream.Writable(options);
   var first = true;
   client.sendingStream._write = function(buffer, encoding, callback) {
+    if (client.state === STATE_CLOSING) {
+      callback(new Error("websocket is CLOSING"));
+      return;
+    } else if (client.state === STATE_CLOSED) {
+      callback(new Error("websocket is CLOSED"));
+      return;
+    }
     var opcode;
     if (first) {
       first = false;
