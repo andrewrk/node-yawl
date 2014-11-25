@@ -272,7 +272,7 @@ invalid websocket handshake raised an error, it would be emitted here.
 
 Sends an unfragmented UTF-8 encoded text message.
 
-#### ws.sendBinary(buffer)
+#### ws.sendBinary(buffer, [isUtf8])
 
 `buffer` is a `Buffer`.
 
@@ -281,6 +281,9 @@ Sends an unfragmented binary message.
 If this websocket client does not represent a client connected to a server,
 `buffer` will be modified in place. Make a copy of the buffer if you do not
 want this to happen.
+
+If `isUtf8` is `true`, the message will be sent as an unfragmented text
+message.
 
 #### ws.sendStream([isUtf8], [length], [options])
 
@@ -305,6 +308,21 @@ When you call `write()` on the `Writable` stream that is returned, if this
 websocket client does not represent a client connected to a server, the buffer
 you pass to `write()` will be modified in place. Make a copy of the buffer if
 you do not want this to happen.
+
+#### ws.sendFragment(finBit, opcode, buffer)
+
+This is a low level method that you will only need if you are writing tests or
+using yawl to test other code.
+
+ * `finBit` - Either `yawl.FIN_BIT_1` or `yawl.FIN_BIT_0`.
+ * `opcode` - One of:
+   - `yawl.OPCODE_CONTINUATION_FRAME`
+   - `yawl.OPCODE_TEXT_FRAME`
+   - `yawl.OPCODE_BINARY_FRAME`
+   - `yawl.OPCODE_CLOSE`
+   - `yawl.OPCODE_PING`
+   - `yawl.OPCODE_PONG`
+ * `buffer` - `Buffer`. If you want no fragment body, use `yawl.EMPTY_BUFFER`.
 
 ### ws.close([statusCode], [message])
 

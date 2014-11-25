@@ -16,12 +16,17 @@ exports.WebSocketClient = WebSocketClient;
 exports.parseSubProtocolList = parseSubProtocolList;
 exports.parseExtensionList = parseExtensionList;
 
-var OPCODE_CONTINUATION_FRAME = 0x0;
-var OPCODE_TEXT_FRAME         = 0x1;
-var OPCODE_BINARY_FRAME       = 0x2;
-var OPCODE_CLOSE              = 0x8;
-var OPCODE_PING               = 0x9;
-var OPCODE_PONG               = 0xA;
+var FIN_BIT_1 = exports.FIN_BIT_1 = 0x80;
+var FIN_BIT_0 = exports.FIN_BIT_1 = 0x00;
+
+var OPCODE_CONTINUATION_FRAME = exports.OPCODE_CONTINUATION_FRAME = 0x0;
+var OPCODE_TEXT_FRAME         = exports.OPCODE_TEXT_FRAME         = 0x1;
+var OPCODE_BINARY_FRAME       = exports.OPCODE_BINARY_FRAME       = 0x2;
+var OPCODE_CLOSE              = exports.OPCODE_CLOSE              = 0x8;
+var OPCODE_PING               = exports.OPCODE_PING               = 0x9;
+var OPCODE_PONG               = exports.OPCODE_PONG               = 0xA;
+
+var EMPTY_BUFFER = exports.EMPTY_BUFFER = new Buffer(0);
 
 var HANDSHAKE_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
@@ -92,7 +97,6 @@ var CONTROL_FRAME_STATE = [
 
 var BUFFER_NO_DEBUG = false; // TODO revert
 
-var FOUR_BYTES_OF_TRASH = new Buffer(4);
 
 function createServer(options) {
   return new WebSocketServer(options);
@@ -317,7 +321,9 @@ function WebSocketClient(options) {
   stream.Transform.call(this);
 
   this.socket = options.socket;
-  this.maskDirectionOut = !!options.maskDirectionOut;
+  this.maskOutBit = options.maskDirectionOut ? 0x80 : 0x00;
+  this.expectedMaskInBit = +!this.maskOutBit;
+  this.maskOutSize = this.maskOutBit ? 4 : 0;
 
   this.allowTextMessages = !!options.allowTextMessages;
   this.allowBinaryMessages = !!options.allowBinaryMessages;
@@ -384,8 +390,7 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
         this.maskBit    = getBits(b, 0, 1);
         this.payloadLen = getBits(b, 1, 7);
 
-        var expectedMaskBit = this.maskDirectionOut ? 0 : 1;
-        if (this.maskBit !== expectedMaskBit) {
+        if (this.maskBit !== this.expectedMaskInBit) {
           failConnection(this, 1002, "invalid mask bit");
           return;
         }
@@ -555,51 +560,67 @@ WebSocketClient.prototype.sendBinary = function(buffer, sendAsUtf8Text) {
   if (this.error) {
     throw new Error("socket in error state");
   }
-  var mask = this.maskDirectionOut ? rando(4) : null;
-  // 1 0 0 0 0001  if text
-  // 1 0 0 0 0010  if binary
-  var header = getHeaderBuffer(sendAsUtf8Text ? 129 : 130, buffer.length, mask);
-  if (mask) maskMangleBuf(buffer, mask);
-  this.push(header);
-  this.push(buffer);
+  var opcode = sendAsUtf8Text ? OPCODE_TEXT_FRAME : OPCODE_BINARY_FRAME;
+  this.sendFragment(FIN_BIT_1, opcode, buffer);
 };
 
 WebSocketClient.prototype.sendStream = function(sendAsUtf8Text, length, options) {
-  if (this.sendingStream) {
+  var client = this;
+  if (client.sendingStream) {
     throw new Error("send stream already in progress");
   }
-  if (this.error) {
+  if (client.error) {
     throw new Error("socket in error state");
   }
-  this.sendingStream = new stream.Writable(options);
+  client.sendingStream = new stream.Writable(options);
   var first = true;
-  this.sendingStream._write = function(buffer, encoding, callback) {
-    var mask = this.maskDirectionOut ? rando(4) : null;
-    var header;
+  client.sendingStream._write = function(buffer, encoding, callback) {
+    var opcode;
     if (first) {
       first = false;
-      // 0 0 0 0 0001  if text
-      // 0 0 0 0 0010  if binary
-      header = getHeaderBuffer(sendAsUtf8Text ? 1 : 2, buffer.length, mask);
+      opcode = sendAsUtf8Text ? OPCODE_TEXT_FRAME : OPCODE_BINARY_FRAME;
     } else {
-      // 0 0 0 0 0000
-      header = getHeaderBuffer(0, buffer.length, mask);
+      opcode = OPCODE_CONTINUATION_FRAME;
     }
-    if (mask) maskMangleBuf(buffer, mask);
-    this.push(header);
-    this.push(buffer);
+    client.sendFragment(FIN_BIT_0, opcode, buffer);
     callback();
-  }.bind(this);
+  };
 
-  this.sendingStream.on('finish', function() {
-    this.sendingStream = null;
-    // don't care about the mask value. the payload is empty.
-    var mask = this.maskDirectionOut ? FOUR_BYTES_OF_TRASH : null;
-    // 1 0 0 0 0000
-    this.push(getHeaderBuffer(128, 0, mask));
-  }.bind(this));
+  client.sendingStream.on('finish', function() {
+    client.sendingStream = null;
+    client.sendFragment(FIN_BIT_1, OPCODE_CONTINUATION_FRAME, EMPTY_BUFFER);
+  });
 
-  return this.sendingStream;
+  return client.sendingStream;
+};
+
+WebSocketClient.prototype.sendFragment = function(finBit, opcode, buffer) {
+  var byte1 = finBit | opcode;
+  var header;
+  var maskOffset;
+  if (buffer.length <= 125) {
+    maskOffset = 2;
+    header = new Buffer(maskOffset + this.maskOutSize);
+    header[1] = buffer.length | this.maskOutBit;
+  } else if (buffer.length <= 65535) {
+    maskOffset = 4;
+    header = new Buffer(maskOffset + this.maskOutSize);
+    header[1] = 126 | this.maskOutBit;
+    header.writeUInt16BE(buffer.length, 2, BUFFER_NO_DEBUG);
+  } else {
+    maskOffset = 10;
+    header = new Buffer(maskOffset + this.maskOutSize);
+    header[1] = 127 | this.maskOutBit;
+    writeUInt64BE(header, buffer.length, 2);
+  }
+  header[0] = byte1;
+  if (this.maskOutBit) {
+    var mask = rando(4);
+    mask.copy(header, maskOffset);
+    maskMangleBuf(buffer, mask);
+  }
+  this.push(header);
+  this.push(buffer);
 };
 
 WebSocketClient.prototype.sendPingBinary = function(msgBuffer) {
@@ -609,12 +630,7 @@ WebSocketClient.prototype.sendPingBinary = function(msgBuffer) {
   if (this.error) {
     throw new Error("socket in error state");
   }
-  var mask = this.maskDirectionOut ? rando(4) : null;
-  // 1 0 0 0 1001
-  var header = getHeaderBuffer(137, msgBuffer.length, mask);
-  if (mask) maskMangleBuf(msgBuffer, mask);
-  this.push(header);
-  this.push(msgBuffer);
+  this.sendFragment(FIN_BIT_1, OPCODE_PING, msgBuffer);
 };
 
 WebSocketClient.prototype.sendPingText = function(message) {
@@ -628,12 +644,7 @@ WebSocketClient.prototype.sendPongBinary = function(msgBuffer) {
   if (this.error) {
     throw new Error("socket in error state");
   }
-  var mask = this.maskDirectionOut ? rando(4) : null;
-  // 1 0 0 0 1010
-  var header = getHeaderBuffer(138, msgBuffer.length, mask);
-  if (mask) maskMangleBuf(msgBuffer, mask);
-  this.push(header);
-  this.push(msgBuffer);
+  this.sendFragment(FIN_BIT_1, OPCODE_PONG, msgBuffer);
 };
 
 WebSocketClient.prototype.sendPongText = function(message) {
@@ -651,7 +662,7 @@ WebSocketClient.prototype.close = function(statusCode, message) {
   } else {
     sendCloseWithMessage(this, 1000, message);
   }
-  if (!this.maskDirectionOut) {
+  if (!this.maskOutBit) {
     this.push(null);
   }
 };
@@ -661,52 +672,18 @@ WebSocketClient.prototype.isOpen = function() {
 };
 
 function sendCloseWithMessage(client, statusCode, message) {
-  var msgBuffer = new Buffer(125);
-  var bytesWritten = msgBuffer.write(message, 2, 123, 'utf8');
+  var buffer = new Buffer(125);
+  var bytesWritten = buffer.write(message, 2, 123, 'utf8');
   if (Buffer._charsWritten !== message.length) {
     throw new Error("close message too long");
   }
-  msgBuffer.writeUInt16BE(statusCode, 0, BUFFER_NO_DEBUG);
-  msgBuffer = msgBuffer.slice(0, bytesWritten + 2);
-  var mask = client.maskDirectionOut ? rando(4) : null;
-  // 2 extra bytes for status code
-  // 1 0 0 0 1000
-  var header = getHeaderBuffer(136, msgBuffer.length, mask);
-  if (mask) maskMangleBuf(msgBuffer, mask);
-  client.push(header);
-  client.push(msgBuffer);
+  buffer.writeUInt16BE(statusCode, 0, BUFFER_NO_DEBUG);
+  buffer = buffer.slice(0, bytesWritten + 2);
+  client.sendFragment(FIN_BIT_1, OPCODE_CLOSE, buffer);
 }
 
 function sendCloseBare(client) {
-  var mask = client.maskDirectionOut ? rando(4) : null;
-  // 1 0 0 0 1000
-  var header = getHeaderBuffer(136, 0, mask);
-  client.push(header);
-}
-
-function getHeaderBuffer(byte1, size, mask) {
-  var b;
-  var maskBit = mask ? 0x80 : 0x00;
-  var maskSize = mask ? 4 : 0;
-  if (size <= 125) {
-    b = new Buffer(2 + maskSize);
-    b[0] = byte1;
-    b[1] = size|maskBit;
-    if (mask) mask.copy(b, 2);
-  } else if (size <= 65535) {
-    b = new Buffer(4 + maskSize);
-    b[0] = byte1;
-    b[1] = 126|maskBit;
-    b.writeUInt16BE(size, 2, BUFFER_NO_DEBUG);
-    if (mask) mask.copy(b, 4);
-  } else {
-    b = new Buffer(10 + maskSize);
-    b[0] = byte1;
-    b[1] = 127|maskBit;
-    writeUInt64BE(b, size, 2);
-    if (mask) mask.copy(b, 10);
-  }
-  return b;
+  client.sendFragment(FIN_BIT_1, OPCODE_CLOSE, EMPTY_BUFFER);
 }
 
 function parseSubProtocolList(request) {
@@ -726,7 +703,7 @@ function handleSocketClose(client) {
 
 function failConnection(client, statusCode, message) {
   client.close(statusCode, message);
-  if (client.maskDirectionOut) {
+  if (client.maskOutBit) {
     var err = new Error(message);
     err.statusCode = statusCode;
     handleError(client, err);
