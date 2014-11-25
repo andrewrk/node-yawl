@@ -321,7 +321,7 @@ the `connection` event is already in the `OPEN` state.
 
 This event will not fire if `maxFrameSize` is set to `Infinity`.
 
-This event will not fire if `allowTextMessages` is set to `false`.
+This event will not fire unless `allowTextMessages` is set to `true`.
 
 Fragmented messages never arrive in this event.
 
@@ -331,7 +331,7 @@ Fragmented messages never arrive in this event.
 
 This event will not fire if `maxFrameSize` is set to `Infinity`.
 
-This event will not fire if `allowBinaryMessages` is set to `false`.
+This event will not fire unless `allowBinaryMessages` is set to `true`.
 
 Fragmented messages never arrive in this event.
 
@@ -350,8 +350,8 @@ See [readable.setEncoding(encoding)](http://nodejs.org/docs/latest/api/stream.ht
 Unfragmented messages do not arrive in this event if `maxFrameSize` is not
 `Infinity`.
 
-Fragmented messages do not arrive in this event if `allowFragmentedMessages` is
-`false`.
+Fragmented messages do not arrive in this event unless `allowFragmentedMessages`
+is set to `true`.
 
 `isUtf8` will not be `true` if `allowTextMessages` is `false`.
 

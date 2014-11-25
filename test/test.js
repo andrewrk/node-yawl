@@ -57,7 +57,8 @@ describe("server", function() {
           assert.strictEqual(buf[1], 0x3);
           assert.strictEqual(buf[2], 0x3);
           assert.strictEqual(buf[3], 0x7);
-          cb();
+          client.close();
+          httpServer.close(cb);
         });
       });
     });
@@ -90,7 +91,7 @@ describe("server", function() {
       });
       client.on('close', function() {
         assert.strictEqual(gotCloseMessage, true);
-        cb();
+        httpServer.close(cb);
       });
     });
   });
@@ -127,7 +128,7 @@ describe("server", function() {
         client.close();
       });
       client.on('close', function() {
-        cb();
+        httpServer.close(cb);
       });
     });
   });

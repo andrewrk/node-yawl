@@ -508,8 +508,11 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
           this.state = STATE_START;
         }
         continue;
+      case STATE_CLOSING:
+      case STATE_CLOSED:
+        return;
       default:
-        throw new Error("unknown state");
+        throw new Error("unknown state: " + this.state);
     }
   }
 

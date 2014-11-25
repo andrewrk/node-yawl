@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "description": "yet another web sockets library",
   "scripts": {
-    "test": "mocha --reporter spec --check-leaks"
+    "test": "mocha --reporter spec --check-leaks test/test.js"
   },
   "keywords": [
     "websocket",
