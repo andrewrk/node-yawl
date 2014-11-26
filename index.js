@@ -95,8 +95,23 @@ var CONTROL_FRAME_STATE = [
   STATE_PONG_FRAME,  // pong
 ];
 
-var BUFFER_NO_DEBUG = false; // TODO revert
+var BUFFER_NO_DEBUG = true;
 
+// https://tools.ietf.org/html/rfc2616#section-2.2
+var extensionsTokenizerRegex = new RegExp(
+  '([^\u0000-\u001f()<>@,;:\\\\'+'"'+'/\\[\\]?={}'+' '+'\t]+)' + '|' + // token
+  '([' +          '()<>@,;:\\\\'  +  '/\\[\\]?={}'  +  '\t])'  + '|' + // separators (without '" ')
+  '("(?:[^"\\\\]|\\\\.)*")'                                    + '|' + // quoted-string
+  '((?:\r\n)?[ \t]+)'                                          + '|' + // LWS
+  '([^])',                                                             // invalid
+  "g");
+var EXT_TOKEN_TOKEN = 1;
+var EXT_TOKEN_SEPARATOR = 2;
+var EXT_TOKEN_QUOTED_STRING = 3;
+var EXT_TOKEN_LWS = 4;
+var EXT_TOKEN_EOF = -1;
+
+var EXT_SYNTAX_ERR_MSG = "websocket-extensions syntax error";
 
 function createServer(options) {
   return new WebSocketServer(options);
@@ -711,41 +726,27 @@ function parseSubProtocolList(request) {
   return parseHeaderValueList(request.headers['sec-websocket-protocol']);
 }
 
-// https://tools.ietf.org/html/rfc2616#section-2.2
-var tokenizerRegex = new RegExp(
-    '([^\u0000-\u001f()<>@,;:\\\\'+'"'+'/\\[\\]?={}'+' '+'\t]+)' + '|' + // token
-    '([' +          '()<>@,;:\\\\'  +  '/\\[\\]?={}'  +  '\t])'  + '|' + // separators (without '" ')
-    '("(?:[^"\\\\]|\\\\.)*")'                                    + '|' + // quoted-string
-    '((?:\r\n)?[ \t]+)'                                          + '|' + // LWS
-    '([^])',                                                             // invalid
-    "g");
-var TOKEN = 1;
-var SEPARATOR = 2;
-var QUOTED_STRING = 3;
-var LWS = 4;
-var EOF = -1;
-var syntaxErrorMessage = "websocket-extensions syntax error";
 function parseExtensionList(request) {
   var headerValue = request.headers['sec-websocket-extensions'];
   if (!headerValue) return null;
   // https://tools.ietf.org/html/rfc6455#section-9.1
   var tokens = [];
-  tokenizerRegex.lastIndex = 0;
+  extensionsTokenizerRegex.lastIndex = 0;
   while (true) {
-    var match = tokenizerRegex.exec(headerValue);
+    var match = extensionsTokenizerRegex.exec(headerValue);
     if (match == null) {
       // this makes the code slightly easier to write below
-      tokens.push({type:EOF, text:EOF});
+      tokens.push({type:EXT_TOKEN_EOF, text:EXT_TOKEN_EOF});
       // EOF
       break;
     }
     var text = match[0];
-    if (match[TOKEN] != null) {
+    if (match[EXT_TOKEN_TOKEN] != null) {
       // token
-      tokens.push({type:TOKEN, text:text});
-    } else if (match[SEPARATOR] != null) {
-      tokens.push({type:SEPARATOR, text:text});
-    } else if (match[QUOTED_STRING] != null) {
+      tokens.push({type:EXT_TOKEN_TOKEN, text:text});
+    } else if (match[EXT_TOKEN_SEPARATOR] != null) {
+      tokens.push({type:EXT_TOKEN_SEPARATOR, text:text});
+    } else if (match[EXT_TOKEN_QUOTED_STRING] != null) {
       // strip quotes
       text = /^"(.*)"$/.exec(text)[1];
       // handle escapes
@@ -753,32 +754,30 @@ function parseExtensionList(request) {
 
       var theSpecSays = "When using the quoted-string syntax variant, the value " +
                         "after quoted-string unescaping MUST conform to the " +
-                        "'token' ABNF."
-      var lastLastIndex = tokenizerRegex.lastIndex;
-      tokenizerRegex.lastIndex = 0;
-      if (tokenizerRegex.exec(text)[TOKEN] !== text) {
+                        "'token' ABNF.";
+      var lastLastIndex = extensionsTokenizerRegex.lastIndex;
+      extensionsTokenizerRegex.lastIndex = 0;
+      if (extensionsTokenizerRegex.exec(text)[EXT_TOKEN_TOKEN] !== text) {
         throw new Error(theSpecSays);
       }
-      tokenizerRegex.lastIndex = lastLastIndex;
+      extensionsTokenizerRegex.lastIndex = lastLastIndex;
 
-      tokens.push({type:TOKEN, text:text});
-    } else if (match[LWS] != null) {
+      tokens.push({type:EXT_TOKEN_TOKEN, text:text});
+    } else if (match[EXT_TOKEN_LWS] != null) {
       // ignore whitespace
+      continue;
     } else {
       // invalid
-      throw new Error(syntaxErrorMessage);
+      throw new Error(EXT_SYNTAX_ERR_MSG);
     }
   }
 
   var extensions = [];
   var tokenIndex = 0;
-  function ensureNotEof() {
-    if (tokens[tokenIndex].type == EOF) throw new Error(syntaxErrorMessage);
-  }
   ensureNotEof();
-  while (tokens[tokenIndex].type !== EOF) {
+  while (tokens[tokenIndex].type !== EXT_TOKEN_EOF) {
     var extensionNameToken = tokens[tokenIndex++];
-    if (extensionNameToken.type !== TOKEN) throw new Error(syntaxErrorMessage);
+    if (extensionNameToken.type !== EXT_TOKEN_TOKEN) throw new Error(EXT_SYNTAX_ERR_MSG);
     var extensionName = extensionNameToken.text;
     var extensionParameters = [];
     switch (tokens[tokenIndex].text) {
@@ -789,15 +788,15 @@ function parseExtensionList(request) {
       case ";":
         tokenIndex++;
         ensureNotEof();
-        while (tokens[tokenIndex].type !== EOF) {
+        while (tokens[tokenIndex].type !== EXT_TOKEN_EOF) {
           var parameterNameToken = tokens[tokenIndex++];
-          if (parameterNameToken.type !== TOKEN) throw new Error(syntaxErrorMessage);
+          if (parameterNameToken.type !== EXT_TOKEN_TOKEN) throw new Error(EXT_SYNTAX_ERR_MSG);
           var parameterName = parameterNameToken.text;
           var parameterValue = null;
           if (tokens[tokenIndex].text === "=") {
             tokenIndex++;
             var parameterValueToken = tokens[tokenIndex++];
-            if (parameterValueToken.type !== TOKEN) throw new Error(syntaxErrorMessage);
+            if (parameterValueToken.type !== EXT_TOKEN_TOKEN) throw new Error(EXT_SYNTAX_ERR_MSG);
             parameterValue = parameterValueToken.text;
           }
           switch (tokens[tokenIndex].text) {
@@ -806,10 +805,10 @@ function parseExtensionList(request) {
               ensureNotEof();
               break;
             case ",":
-            case EOF:
+            case EXT_TOKEN_EOF:
               break;
             default:
-              throw new Error(syntaxErrorMessage);
+              throw new Error(EXT_SYNTAX_ERR_MSG);
           }
           extensionParameters.push({name:parameterName, value:parameterValue});
           if (tokens[tokenIndex].text === ",") {
@@ -819,14 +818,17 @@ function parseExtensionList(request) {
           }
         }
         break;
-      case EOF:
+      case EXT_TOKEN_EOF:
         break;
       default:
-        throw new Error(syntaxErrorMessage);
+        throw new Error(EXT_SYNTAX_ERR_MSG);
     }
     extensions.push({name:extensionName, params:extensionParameters});
   }
   return extensions;
+  function ensureNotEof() {
+    if (tokens[tokenIndex].type === EXT_TOKEN_EOF) throw new Error(EXT_SYNTAX_ERR_MSG);
+  }
 }
 
 function handleSocketClose(client) {

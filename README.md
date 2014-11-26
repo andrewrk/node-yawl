@@ -109,7 +109,7 @@ var url = require('url');
 // use url.parse to create the options object
 var options = url.parse("ws://example.com/path?query=1");
 // now set more options
-options.maxFrameSize = Infinity; // just an example
+options.allowTextMessages = true;
 // now create the client
 var ws = yawl.createClient(options);
 // ...
@@ -143,7 +143,7 @@ Example:
 
 ```
 ...
-Sec-WebSocket-Extensions: foo, bar; baz=2; extra, third; arg="qu;o\"t,ed"
+Sec-WebSocket-Extensions: foo,bar; baz=2;extra, third; arg="quoted"
 ...
 ```
 
@@ -173,7 +173,7 @@ Yields:
     params: [
       {
         name: 'arg',
-        value: 'qu;o"t,ed',
+        value: 'quoted',
       },
     ],
   },
@@ -552,12 +552,8 @@ as usual.
     [reports/servers/index.html](http://s3.amazonaws.com/superjoe/temp/yawl/servers/index.html)
     in a web browser.
 
-## Roadmap
+## Roadmap to 1.0.0
 
- * RFC 6455 compliance and test suite, autobahn?
- * Support
-   [permessage-deflate](http://tools.ietf.org/html/draft-ietf-hybi-permessage-compression-19)
-   extension
  * sendStream: send as unfragmented if length is present
  * when client tries to send message if there is a stream ongoing, it queues
    the data instead of erroring
