@@ -1,6 +1,6 @@
 # node-yawl
 
-[![Build Status](https://travis-ci.org/andrewrk/yawl.svg?branch=master)](https://travis-ci.org/andrewrk/yawl)
+[![Build Status](https://travis-ci.org/andrewrk/node-yawl.svg?branch=master)](https://travis-ci.org/andrewrk/node-yawl)
 
 Yet Another WebSocket Library - WebSocket server and client for Node.js
 
