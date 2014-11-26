@@ -507,4 +507,126 @@ describe("yawl", function() {
       });
     });
   });
+
+  it("invalid origin", function(cb) {
+    var httpServer = http.createServer();
+    var wss = yawl.createServer({
+      server: httpServer,
+      origin: "http://example.com",
+    });
+    httpServer.listen(function() {
+      var options = {
+        host: 'localhost',
+        protocol: 'ws',
+        port: httpServer.address().port,
+        path: '/',
+      };
+      var client = yawl.createClient(options);
+      client.on('error', function(err) {
+        assert.strictEqual(err.message, "server returned HTTP 403");
+        httpServer.close(cb);
+      });
+    });
+  });
+
+  it("valid origin", function(cb) {
+    var httpServer = http.createServer();
+    var wss = yawl.createServer({
+      server: httpServer,
+      origin: "http://example.com",
+    });
+    httpServer.listen(function() {
+      var options = {
+        host: 'localhost',
+        protocol: 'ws',
+        port: httpServer.address().port,
+        path: '/',
+        origin: "http://example.com",
+      };
+      var client = yawl.createClient(options);
+      client.on('open', function() {
+        client.close();
+        httpServer.close(cb);
+      });
+    });
+  });
+
+  it("invalid websocket version", function(cb) {
+    var httpServer = http.createServer();
+    var wss = yawl.createServer({
+      server: httpServer,
+      origin: null,
+    });
+    httpServer.listen(function() {
+      var options = {
+        host: 'localhost',
+        protocol: 'ws',
+        port: httpServer.address().port,
+        path: '/',
+        extraHeaders: {
+          'Sec-WebSocket-Version': "12",
+        },
+      };
+      var client = yawl.createClient(options);
+      client.on('error', function(err) {
+        assert.strictEqual(err.message, "server returned HTTP 426");
+        httpServer.close(cb);
+      });
+    });
+  });
+
+  it("invalid websocket key", function(cb) {
+    var httpServer = http.createServer();
+    var wss = yawl.createServer({
+      server: httpServer,
+      origin: null,
+    });
+    httpServer.listen(function() {
+      var options = {
+        host: 'localhost',
+        protocol: 'ws',
+        port: httpServer.address().port,
+        path: '/',
+        extraHeaders: {
+          'Sec-WebSocket-Key': "",
+        },
+      };
+      var client = yawl.createClient(options);
+      client.on('error', function(err) {
+        assert.strictEqual(err.message, "server returned HTTP 400");
+        httpServer.close(cb);
+      });
+    });
+  });
+
+  it("trying to send too big payloads", function(cb) {
+    var httpServer = http.createServer();
+    var wss = yawl.createServer({
+      server: httpServer,
+      origin: null,
+    });
+    httpServer.listen(function() {
+      var options = {
+        host: 'localhost',
+        protocol: 'ws',
+        port: httpServer.address().port,
+        path: '/',
+      };
+      var client = yawl.createClient(options);
+      client.on('open', function() {
+        var tooBigForControlFrame = new Buffer(128);
+        assert.throws(function() {
+          client.sendPingBinary(tooBigForControlFrame);
+        }, /message too long/);
+        assert.throws(function() {
+          client.sendPongText(tooBigForControlFrame.toString('utf8'));
+        }, /message too long/);
+        assert.throws(function() {
+          client.close(0, tooBigForControlFrame.toString('utf8'));
+        }, /message too long/);
+        client.close();
+        httpServer.close(cb);
+      });
+    });
+  });
 });

@@ -98,6 +98,8 @@ Creates a `WebSocketClient` instance.
    rather than ports, use SSL, etc.
  * `extraHeaders` (optional) - `Object` of extra headers to include in the
    upgrade request.
+ * `origin` (optional) - Sets the `Origin` header. Same as including an
+   `Origin` property in `extraHeaders`.
  * `allowTextMessages` (optional) - See `setAllowTextMessages` below.
  * `allowBinaryMessages` (optional) - See `setAllowBinaryMessages` below.
  * `allowFragmentedMessages` (optional) - See `setAllowFragmentedMessages` below.
@@ -191,7 +193,7 @@ Yields:
 `String` or `null`. Set to `null` to disable origin validation.
 To activate origin validation, set to a string such as:
 
-`https://example.com` or `https://example.com:1234`
+`https://example.com` or `http://example.com:1234`
 
 #### wss.setNegotiate(value)
 

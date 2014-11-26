@@ -661,7 +661,6 @@ WebSocketClient.prototype.sendPongText = function(message) {
 
 WebSocketClient.prototype.close = function(statusCode, message) {
   if (!this.isOpen()) return;
-  this.state = STATE_CLOSING;
   if (statusCode == null && message == null) {
     sendCloseBare(this);
   } else if (statusCode != null) {
@@ -670,6 +669,9 @@ WebSocketClient.prototype.close = function(statusCode, message) {
   } else {
     sendCloseWithMessage(this, 1000, message);
   }
+  // this is after sendClose() because those methods can throw if message
+  // is too long
+  this.state = STATE_CLOSING;
   if (!this.maskOutBit) {
     this.push(null);
   }
