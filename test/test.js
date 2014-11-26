@@ -292,37 +292,6 @@ describe("yawl", function() {
     });
   });
 
-  it("sendStream unfragmented message", function(cb) {
-    var httpServer = http.createServer();
-    var wss = yawl.createServer({
-      server: httpServer,
-      allowTextMessages: true,
-      origin: null,
-    });
-    wss.on('connection', function(ws) {
-      ws.on('textMessage', function(message) {
-        assert.strictEqual(message, "unfragmentedmessage");
-        ws.close();
-        httpServer.close(cb);
-      });
-    });
-    httpServer.listen(function() {
-      var options = {
-        host: 'localhost',
-        protocol: 'ws',
-        port: httpServer.address().port,
-        path: '/',
-      };
-      var client = yawl.createClient(options);
-      client.on('open', function() {
-        var outStream = client.sendStream(true, "unfragmentedmessage".length);
-        outStream.write("unfragmented");
-        outStream.write("message");
-        outStream.end();
-      });
-    });
-  });
-
   it("send a ping and get a pong during a fragmented stream", function(cb) {
     var httpServer = http.createServer();
     var wss = yawl.createServer({

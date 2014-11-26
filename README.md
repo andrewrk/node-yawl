@@ -2,8 +2,6 @@
 
 Yet Another WebSocket Library - WebSocket server and client for Node.js
 
-TODO (work in progress)
-
 # Features
 
  * Almost [RFC 6455](https://tools.ietf.org/html/rfc6455) compliant. Exceptions:
@@ -286,6 +284,8 @@ invalid websocket handshake raised an error, it would be emitted here.
 
 Sends an unfragmented UTF-8 encoded text message.
 
+This method throws an error if you are in the middle of sending a stream.
+
 #### ws.sendBinary(buffer, [isUtf8])
 
 `buffer` is a `Buffer`.
@@ -299,13 +299,15 @@ want this to happen.
 If `isUtf8` is `true`, the message will be sent as an unfragmented text
 message.
 
-#### ws.sendStream([isUtf8], [length], [options])
+This method throws an error if you are in the middle of sending a stream.
+
+#### ws.sendStream([isUtf8], [options])
+
+Sends a fragmented message.
 
  * `isUtf8` (optional) - `Boolean`. If `true` this message will be sent as
    UTF-8 encoded text message. Otherwise, this message will be sent as a
    binary message.
- * `length` (optional) - `Number`. If supplied, this message will be sent
-   unfragmented, otherwise will be sent fragmented.
  * `options` (optional):
    - `highWaterMark` - `Number` - Buffer level when `write()` starts returning
      `false`. Default 16KB.
@@ -313,18 +315,15 @@ message.
 Returns a `Writable` stream which is sent over the websocket connection. Be
 sure to handle the `error` event of this stream.
 
-Note that any other text or binary messages you send while streaming are
-queued until the stream is finished.
-
-If the message is unfragmented, even control messages such as ping, pong,
-and close must be queued until the stream is finished.
+You may not send other text, binary, or stream messages while streaming.
+This method throws an error if you are in the middle of sending another stream.
 
 When you call `write()` on the `Writable` stream that is returned, if this
 websocket client does not represent a client connected to a server, the buffer
 you pass to `write()` will be modified in place. Make a copy of the buffer if
 you do not want this to happen.
 
-#### ws.sendFragment(finBit, opcode, length, [buffer])
+#### ws.sendFragment(finBit, opcode, buffer)
 
 This is a low level method that you will only need if you are writing tests or
 using yawl to test other code.
@@ -337,12 +336,7 @@ using yawl to test other code.
    - `yawl.OPCODE_CLOSE`
    - `yawl.OPCODE_PING`
    - `yawl.OPCODE_PONG`
- * `length` - `Number`. Length of the fragment. If you pass a `buffer`
-   argument, this should be `buffer.length`.
- * `buffer` (optional) - `Buffer`. If you want a 0-length fragment body, pass
-   0 for `length` and do not pass a `buffer` argument. If you want
-   `sendFragment` to not send the fragment body, do not pass a `buffer`
-   argument.
+ * `buffer` - `Buffer`. If you want no fragment body, use `yawl.EMPTY_BUFFER`.
 
 ### ws.close([statusCode], [message])
 
@@ -398,10 +392,6 @@ Pong messages are automatically sent as a response to ping messages.
 #### ws.socket
 
 The underlying socket for this connection.
-
-#### ws.upgradeHead
-
-`Object` containing the response headers from the upgrade request.
 
 #### Event: 'open'
 
@@ -558,8 +548,3 @@ as usual.
  0. Open
     [reports/servers/index.html](http://s3.amazonaws.com/superjoe/temp/yawl/servers/index.html)
     in a web browser.
-
-## Roadmap to 1.0.0
-
- * when client tries to send message if there is a stream ongoing, it queues
-   the data instead of erroring
