@@ -1,5 +1,7 @@
 # node-yawl
 
+[![Build Status](https://travis-ci.org/andrewrk/yawl.svg?branch=master)](https://travis-ci.org/andrewrk/yawl)
+
 Yet Another WebSocket Library - WebSocket server and client for Node.js
 
 # Features
@@ -96,8 +98,9 @@ Creates a `WebSocketClient` instance.
  * `extraHeaders` (optional) - `Object` of extra headers to include in the
    upgrade request.
  * `allowTextMessages` (optional) - See `setAllowTextMessages` below.
- * `allowFragmentedMessages` (optional) - See `setAllowFragmentedMessages` below.
  * `allowBinaryMessages` (optional) - See `setAllowBinaryMessages` below.
+ * `allowFragmentedMessages` (optional) - See `setAllowFragmentedMessages` below.
+ * `allowUnfragmentedMessages` (optional) - see `setAllowUnfragmentedMessages` below.
  * `maxFrameSize` (optional) - See `setMaxFrameSize` below.
 
 Consider using code like this with `createClient`:
