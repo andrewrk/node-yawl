@@ -82,6 +82,7 @@ Creates a `WebSocketServer` instance.
  * `allowTextMessages` (optional) - see `setAllowTextMessages` below.
  * `allowBinaryMessages` (optional) - see `setAllowBinaryMessages` below.
  * `allowFragmentedMessages` (optional) - see `setAllowFragmentedMessages` below.
+ * `allowUnfragmentedMessages` (optional) - see `setAllowUnfragmentedMessages` below.
  * `maxFrameSize` (optional) - See `setMaxFrameSize` below.
 
 ### yawl.createClient(options)
@@ -211,6 +212,17 @@ Defaults to `false`.
 
 If you set this to `true` be sure to handle the `streamMessage` event. Even
 if you are not interested in a particular message you must consume the stream.
+
+#### wss.setAllowUnfragmentedMessages(value)
+
+`Boolean`. Set to `false` to disallow unfragmented messages. Defaults to `true`.
+
+If you set this to `true` this will prevent `textMessage` and `binaryMessage`
+events from firing.
+
+You might consider instead of this, setting `maxFrameSize` to `Infinity`. This
+will have the effect of causing fragmented messages emit as `streamMessage`,
+with the `length` parameter set.
 
 #### wss.setMaxFrameSize(value)
 
@@ -542,7 +554,6 @@ as usual.
 
 ## Roadmap
 
- * add allowUnfragmentedMessages
  * RFC 6455 compliance and test suite, autobahn?
  * Support
    [permessage-deflate](http://tools.ietf.org/html/draft-ietf-hybi-permessage-compression-19)

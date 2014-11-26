@@ -73,6 +73,14 @@ describe("yawl", function() {
       allowTextMessages: true,
       origin: null,
     });
+    var gotErr = false;
+    wss.on('connection', function(ws) {
+      ws.on('error', function(err) {
+        assert.strictEqual(err.statusCode, 1009);
+        assert.strictEqual(err.message, "exceeded max frame size");
+        gotErr = true;
+      });
+    });
     httpServer.listen(function() {
       var options = {
         host: 'localhost',
@@ -92,6 +100,7 @@ describe("yawl", function() {
       });
       client.on('close', function() {
         assert.strictEqual(gotCloseMessage, true);
+        assert.strictEqual(gotErr, true);
         httpServer.close(cb);
       });
     });
@@ -232,6 +241,51 @@ describe("yawl", function() {
       client.on('close', function() {
         assert.strictEqual(errorOccurred, true);
         assert.strictEqual(serverGotClose, true);
+        assert.strictEqual(gotOpen, true);
+        httpServer.close(cb);
+      });
+    });
+  });
+
+  it("allowUnfragmentedMessages = false", function(cb) {
+    var httpServer = http.createServer();
+    var wss = yawl.createServer({
+      server: httpServer,
+      origin: null,
+      allowUnfragmentedMessages: false,
+      allowBinaryMessages: true,
+      allowTextMessages: true,
+    });
+    var gotServerError = false;
+    wss.on('connection', function(ws) {
+      ws.on('error', function(err) {
+        assert.strictEqual(err.statusCode, 1003);
+        assert.strictEqual(err.message, "unfragmented messages not allowed");
+        gotServerError = true;
+      });
+    });
+    httpServer.listen(function() {
+      var options = {
+        host: 'localhost',
+        protocol: 'ws',
+        port: httpServer.address().port,
+        path: '/',
+      };
+      var client = yawl.createClient(options);
+      var gotOpen = false;
+      client.on('open', function() {
+        client.sendText("hi");
+        gotOpen = true;
+      });
+      var gotCloseMessage = false;
+      client.on('closeMessage', function(statusCode, message) {
+        assert.strictEqual(statusCode, 1003);
+        assert.strictEqual(message, "unfragmented messages not allowed");
+        gotCloseMessage = true;
+      });
+      client.on('close', function() {
+        assert.strictEqual(gotServerError, true);
+        assert.strictEqual(gotCloseMessage, true);
         assert.strictEqual(gotOpen, true);
         httpServer.close(cb);
       });

@@ -133,6 +133,7 @@ function createClient(options) {
     allowTextMessages: options.allowTextMessages,
     allowFragmentedMessages: options.allowFragmentedMessages,
     allowBinaryMessages: options.allowBinaryMessages,
+    allowUnfragmentedMessages: options.allowUnfragmentedMessages,
     maxFrameSize: options.maxFrameSize,
   });
   var request = httpLib.request(options);
@@ -192,6 +193,7 @@ function WebSocketServer(options) {
   this.setAllowTextMessages(options.allowTextMessages);
   this.setAllowBinaryMessages(options.allowBinaryMessages);
   this.setAllowFragmentedMessages(options.allowFragmentedMessages);
+  this.setAllowUnfragmentedMessages(options.allowUnfragmentedMessages);
   this.setMaxFrameSize(options.maxFrameSize);
 
   options.server.on('upgrade', handleUpgrade.bind(null, this));
@@ -199,6 +201,10 @@ function WebSocketServer(options) {
 
 WebSocketServer.prototype.setAllowFragmentedMessages = function(value) {
   this.allowFragmentedMessages = !!value;
+};
+
+WebSocketServer.prototype.setAllowUnfragmentedMessages = function(value) {
+  this.allowUnfragmentedMessages = (value == null) ? true : !!value;
 };
 
 WebSocketServer.prototype.setMaxFrameSize = function(value) {
@@ -292,6 +298,7 @@ function handleUpgrade(server, request, socket, firstBuffer) {
       allowTextMessages: server.allowTextMessages,
       allowBinaryMessages: server.allowBinaryMessages,
       allowFragmentedMessages: server.allowFragmentedMessages,
+      allowUnfragmentedMessages: server.allowUnfragmentedMessages,
       maxFrameSize: server.maxFrameSize,
     });
     socket.on('error', function(err) {
@@ -328,6 +335,7 @@ function WebSocketClient(options) {
   this.allowTextMessages = !!options.allowTextMessages;
   this.allowBinaryMessages = !!options.allowBinaryMessages;
   this.allowFragmentedMessages = !!options.allowFragmentedMessages;
+  this.allowUnfragmentedMessages = (options.allowUnfragmentedMessages == null) ?  true : !!options.allowUnfragmentedMessages;
   this.maxFrameSize = (options.maxFrameSize == null) ? DEFAULT_MAX_FRAME_SIZE : +options.maxFrameSize;
 
   this.error = null;
@@ -422,7 +430,10 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
             failConnection(this, 1003, "binary messages not allowed");
             return;
           } else if (!this.fin && !this.allowFragmentedMessages) {
-            failConnection(this, 1009, "fragmented messages not allowed");
+            failConnection(this, 1003, "fragmented messages not allowed");
+            return;
+          } else if (this.fin && IS_MSG_OPCODE[this.opcode] && !this.allowUnfragmentedMessages) {
+            failConnection(this, 1003, "unfragmented messages not allowed");
             return;
           }
         }
@@ -556,18 +567,18 @@ WebSocketClient.prototype.sendText = function(string) {
   this.sendBinary(new Buffer(string, 'utf8'), true);
 };
 
-WebSocketClient.prototype.sendBinary = function(buffer, sendAsUtf8Text) {
+WebSocketClient.prototype.sendBinary = function(buffer, isUtf8) {
   if (this.sendingStream) {
     throw new Error("send stream already in progress");
   }
   if (this.error) {
     throw new Error("socket in error state");
   }
-  var opcode = sendAsUtf8Text ? OPCODE_TEXT_FRAME : OPCODE_BINARY_FRAME;
+  var opcode = isUtf8 ? OPCODE_TEXT_FRAME : OPCODE_BINARY_FRAME;
   this.sendFragment(FIN_BIT_1, opcode, buffer);
 };
 
-WebSocketClient.prototype.sendStream = function(sendAsUtf8Text, length, options) {
+WebSocketClient.prototype.sendStream = function(isUtf8, length, options) {
   var client = this;
   if (client.sendingStream) {
     throw new Error("send stream already in progress");
@@ -588,7 +599,7 @@ WebSocketClient.prototype.sendStream = function(sendAsUtf8Text, length, options)
     var opcode;
     if (first) {
       first = false;
-      opcode = sendAsUtf8Text ? OPCODE_TEXT_FRAME : OPCODE_BINARY_FRAME;
+      opcode = isUtf8 ? OPCODE_TEXT_FRAME : OPCODE_BINARY_FRAME;
     } else {
       opcode = OPCODE_CONTINUATION_FRAME;
     }
@@ -715,10 +726,10 @@ function failConnection(client, statusCode, message) {
   client.close(statusCode, message);
   if (client.maskOutBit) {
     client.push(null);
-    var err = new Error(message);
-    err.statusCode = statusCode;
-    handleError(client, err);
   }
+  var err = new Error(message);
+  err.statusCode = statusCode;
+  handleError(client, err);
 }
 
 function handleError(client, err) {
