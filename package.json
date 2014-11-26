@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "description": "yet another web sockets library",
   "scripts": {
-    "test": "mocha --reporter spec --check-leaks test/test.js"
+    "test": "mocha --reporter spec --check-leaks test/test.js",
+    "test-cov": "istanbul cover node_modules/mocha/bin/_mocha -- --reporter dot --check-leaks test/test.js",
+    "test-travis": "istanbul cover node_modules/mocha/bin/_mocha --report lcovonly -- --reporter spec --check-leaks test/test.js"
   },
   "keywords": [
     "websocket",
@@ -31,6 +33,7 @@
   },
   "devDependencies": {
     "human-size": "~1.1.0",
+    "istanbul": "~0.3.2",
     "mocha": "~2.0.1"
   },
   "directories": {
