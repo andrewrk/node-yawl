@@ -515,7 +515,7 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
         if (this.buffer.length < this.payloadLen) break outer;
         slice = this.buffer.slice(0, this.payloadLen);
         this.buffer.consume(this.payloadLen);
-        maskMangle(this, slice);
+        if (this.maskBit) maskMangleBufOffset(slice, this.mask, this.frameOffset);
         var statusCode = (slice.length >= 2) ? slice.readUInt16BE(0, BUFFER_NO_DEBUG) : 1005;
         var message = (slice.length >= 2) ? slice.toString('utf8', 2) : "";
         this.emit('closeMessage', statusCode, message);
@@ -525,7 +525,7 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
         if (this.buffer.length < this.payloadLen) break outer;
         slice = this.buffer.slice(0, this.payloadLen);
         this.buffer.consume(this.payloadLen);
-        maskMangle(this, slice);
+        if (this.maskBit) maskMangleBufOffset(slice, this.mask, this.frameOffset);
         this.state = STATE_START;
         this.emit('pingMessage', slice);
         this.sendPongBinary(slice);
@@ -534,7 +534,7 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
         if (this.buffer.length < this.payloadLen) break outer;
         slice = this.buffer.slice(0, this.payloadLen);
         this.buffer.consume(this.payloadLen);
-        maskMangle(this, slice);
+        if (this.maskBit) maskMangleBufOffset(slice, this.mask, this.frameOffset);
         this.state = STATE_START;
         this.emit('pongMessage', slice);
         continue;
@@ -542,7 +542,7 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
         if (this.buffer.length < this.payloadLen) break outer;
         slice = this.buffer.slice(0, this.payloadLen);
         this.buffer.consume(this.payloadLen);
-        maskMangle(this, slice);
+        if (this.maskBit) maskMangleBufOffset(slice, this.mask, this.frameOffset);
         this.state = STATE_START;
         if (this.opcode === OPCODE_TEXT_FRAME) {
           this.emit('textMessage', slice.toString('utf8'));
@@ -557,7 +557,7 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
           if (!this.fin || bytesLeftInFrame !== 0) break outer;
         } else {
           slice = this.buffer.slice(0, amtToRead)
-          maskMangle(this, slice);
+          if (this.maskBit) maskMangleBufOffset(slice, this.mask, this.frameOffset);
           encoding = (this.msgOpcode === OPCODE_BINARY_FRAME) ? undefined : 'utf8';
           this.msgStream.write(slice, encoding, pend.hold());
           this.buffer.consume(amtToRead);
@@ -877,11 +877,6 @@ function maskMangleBuf(buffer, mask) {
   for (var i = 0; i < buffer.length; i += 1) {
     buffer[i] = buffer[i] ^ mask[i % 4];
   }
-}
-
-function maskMangle(client, buffer) {
-  if (!client.maskBit) return;
-  maskMangleBufOffset(buffer, client.mask, client.frameOffset);
 }
 
 function truthy(value) {
