@@ -135,6 +135,9 @@ function createClient(options) {
     'Sec-WebSocket-Key': nonce,
     //'Sec-WebSocket-Extensions': 'permessage-deflate; client_max_window_bits',
   };
+  if (options.origin) {
+    options.headers.Origin = options.origin;
+  }
   extend(options.headers, options.extraHeaders);
 
   var httpLib;
@@ -165,10 +168,9 @@ function createClient(options) {
   return client;
 
   function onResponse(response) {
-    client.response = response;
-    response.on('error', function(err) {
-      handleError(client, err);
-    });
+    var err = new Error("server returned HTTP " + response.statusCode);
+    err.response = response;
+    client.emit('error', err);
   }
 
   function onUpgrade(response, socket, firstBuffer) {
@@ -360,6 +362,7 @@ function WebSocketClient(options) {
   this.error = null;
   this.state = STATE_START;
   this.buffer = new BufferList();
+  this.pend = new Pend();
 
   this.fin = 0;
   this.rsv1 = 0;
@@ -378,14 +381,7 @@ function WebSocketClient(options) {
 }
 
 WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
-  if (this.error) {
-    callback(this.error);
-    return;
-  }
-
   this.buffer.append(buf);
-
-  var pend = new Pend();
 
   var b, slice;
   var amtToRead, encoding;
@@ -559,7 +555,7 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
           slice = this.buffer.slice(0, amtToRead)
           if (this.maskBit) maskMangleBufOffset(slice, this.mask, this.frameOffset);
           encoding = (this.msgOpcode === OPCODE_BINARY_FRAME) ? undefined : 'utf8';
-          this.msgStream.write(slice, encoding, pend.hold());
+          this.msgStream.write(slice, encoding, this.pend.hold());
           this.buffer.consume(amtToRead);
           this.frameOffset += amtToRead;
         }
@@ -579,7 +575,7 @@ WebSocketClient.prototype._transform = function(buf, _encoding, callback) {
     }
   }
 
-  pend.wait(callback);
+  this.pend.wait(callback);
 };
 
 WebSocketClient.prototype.sendText = function(string) {

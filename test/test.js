@@ -120,7 +120,11 @@ describe("yawl", function() {
     wss.on('connection', function(ws) {
       ws.on('textMessage', function(message) {
         assert.strictEqual(message, str);
-        ws.sendBinary(new Buffer([100, 101, 102]));
+        var smallBuf = new Buffer(1024);
+        smallBuf[10] = 10;
+        smallBuf[20] = 20;
+        smallBuf[30] = 30;
+        ws.sendBinary(smallBuf);
       });
     });
     httpServer.listen(function() {
@@ -137,9 +141,10 @@ describe("yawl", function() {
       });
       var gotMessage = false;
       client.on('binaryMessage', function(message) {
-        assert.strictEqual(message[0], 100);
-        assert.strictEqual(message[1], 101);
-        assert.strictEqual(message[2], 102);
+        console.log("message", message);
+        assert.strictEqual(message[10], 10);
+        assert.strictEqual(message[20], 20);
+        assert.strictEqual(message[30], 30);
         client.close();
         gotMessage = true;
       });
@@ -373,5 +378,123 @@ describe("yawl", function() {
       },
     ];
     assert.deepEqual(yawl.parseExtensionList(request), expected);
+  });
+
+  it("client throws error for invalid protocol", function() {
+    assert.throws(function() {
+      var ws = yawl.createClient(url.parse("http://example.com/foo"));
+    }, /invalid protocol/);
+  });
+
+  it("client emits error when server hangs up", function(cb) {
+    var httpServer = http.createServer(function(request, response) {
+      response.statusCode = 200;
+      response.write("hello");
+      response.end();
+    });
+    httpServer.listen(function() {
+      var options = {
+        host: 'localhost',
+        protocol: 'ws',
+        port: httpServer.address().port,
+        path: '/',
+      };
+      var client = yawl.createClient(options);
+      client.on('error', function(err) {
+        assert.strictEqual(err.code, 'ECONNRESET');
+        httpServer.close(cb);
+      });
+    });
+  });
+
+  it("client emits error when server responds with HTTP", function(cb) {
+    var httpServer = http.createServer();
+    httpServer.on('upgrade', function(request, socket, firstBuffer) {
+      socket.write(
+        "HTTP/1.1 200 OK\r\n" +
+        "Connection: close\r\n" +
+        "Content-Length: 5\r\n" +
+        "\r\n" +
+        "hello");
+      socket.end();
+    });
+    httpServer.listen(function() {
+      var options = {
+        host: 'localhost',
+        protocol: 'ws',
+        port: httpServer.address().port,
+        path: '/',
+      };
+      var client = yawl.createClient(options);
+      client.on('error', function(err) {
+        assert.strictEqual(err.response.statusCode, 200);
+        httpServer.close(cb);
+      });
+    });
+  });
+
+  it("server requires explicitly setting origin", function() {
+    var httpServer = http.createServer();
+    assert.throws(function() {
+      var wss = yawl.createServer({ server: httpServer });
+    }, /explicitly set origin/);
+  });
+
+  it("negotiating fail", function(cb) {
+    var httpServer = http.createServer();
+    var wss = yawl.createServer({
+      server: httpServer,
+      negotiate: true,
+      origin: null,
+    });
+    wss.on('negotiate', function(request, socket, callback) {
+      callback(null);
+    });
+    httpServer.listen(function() {
+      var options = {
+        host: 'localhost',
+        protocol: 'ws',
+        port: httpServer.address().port,
+        path: '/',
+      };
+      var client = yawl.createClient(options);
+      client.on('error', function(err) {
+        assert.strictEqual(err.message, "server returned HTTP 400");
+        httpServer.close(cb);
+      });
+    });
+  });
+
+  it("negotiating succeed", function(cb) {
+    var httpServer = http.createServer();
+    var wss = yawl.createServer({
+      server: httpServer,
+      negotiate: true,
+      origin: null,
+    });
+    wss.on('negotiate', function(request, socket, callback) {
+      callback({});
+    });
+    wss.on('connection', function(ws) {
+      ws.on('pingMessage', function() {
+        ws.sendPingText("oh you know it");
+      });
+      ws.on('pongMessage', function() {
+        ws.close();
+        httpServer.close(cb);
+      });
+    });
+    httpServer.listen(function() {
+      var options = {
+        host: 'localhost',
+        protocol: 'ws',
+        port: httpServer.address().port,
+        path: '/',
+      };
+      var client = yawl.createClient(options);
+      client.on('open', function() {
+        client.sendPingText("happy yay ping time");
+      });
+    });
   });
 });
