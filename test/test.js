@@ -323,6 +323,48 @@ describe("yawl", function() {
     });
   });
 
+  it("send a ping and get a pong during a fragmented stream", function(cb) {
+    var httpServer = http.createServer();
+    var wss = yawl.createServer({
+      server: httpServer,
+      allowBinaryMessages: true,
+      allowFragmentedMessages: true,
+      origin: null,
+    });
+    wss.on('connection', function(ws) {
+      ws.on('streamMessage', function(msg, isUtf8, length) {
+        var bl = new BufferList();
+        msg.pipe(bl);
+        bl.on('finish', function() {
+          assert.strictEqual(bl.toString('utf8'), 'msg1msg2');
+          ws.close();
+        });
+      });
+    });
+    httpServer.listen(function() {
+      var options = {
+        host: 'localhost',
+        protocol: 'ws',
+        port: httpServer.address().port,
+        path: '/',
+      };
+      var client = yawl.createClient(options);
+      var outStream;
+      client.on('open', function() {
+        outStream = client.sendStream();
+        outStream.write("msg1");
+        client.sendPingText("msg2");
+      });
+      client.on('pongMessage', function(buffer) {
+        outStream.write(buffer);
+        outStream.end();
+      });
+      client.on('close', function() {
+        httpServer.close(cb);
+      });
+    });
+  });
+
   it("parseExtensionList missing header", function() {
     assert.deepEqual(yawl.parseExtensionList({headers: {}}), null);
   });
