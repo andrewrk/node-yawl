@@ -507,12 +507,14 @@ shortly followed by the `close` event.
 $ node -v
 v0.10.33
 $ date
-Tue Nov 25 16:22:08 MST 2014
+Wed Nov 26 10:42:08 MST 2014
 $ node test/perf.js
-big buffer echo (yawl): 0.51s  196MB/s
-big buffer echo (ws): 0.25s  395MB/s
+big buffer echo (yawl): 0.49s  203MB/s
+big buffer echo (ws): 0.26s  380MB/s
+big buffer echo (faye): 0.42s  235MB/s
 many small buffers (yawl): 0.37s  13MB/s
-many small buffers (ws): 0.25s  19MB/s
+many small buffers (ws): 0.23s  20MB/s
+many small buffers (faye): 0.32s  15MB/s
 done
 ```
 
