@@ -121,9 +121,10 @@ describe("yawl", function() {
       ws.on('textMessage', function(message) {
         assert.strictEqual(message, str);
         var smallBuf = new Buffer(1024);
-        smallBuf[10] = 10;
-        smallBuf[20] = 20;
-        smallBuf[30] = 30;
+        smallBuf[100] = 10;
+        smallBuf[200] = 20;
+        smallBuf[400] = 40;
+        smallBuf[800] = 80;
         ws.sendBinary(smallBuf);
       });
     });
@@ -141,10 +142,10 @@ describe("yawl", function() {
       });
       var gotMessage = false;
       client.on('binaryMessage', function(message) {
-        console.log("message", message);
-        assert.strictEqual(message[10], 10);
-        assert.strictEqual(message[20], 20);
-        assert.strictEqual(message[30], 30);
+        assert.strictEqual(message[100], 10);
+        assert.strictEqual(message[200], 20);
+        assert.strictEqual(message[400], 40);
+        assert.strictEqual(message[800], 80);
         client.close();
         gotMessage = true;
       });
@@ -378,6 +379,15 @@ describe("yawl", function() {
       },
     ];
     assert.deepEqual(yawl.parseExtensionList(request), expected);
+  });
+
+  it("parseSubProtocolList", function() {
+    var request = {
+      headers: {
+        'sec-websocket-protocol': 'chat, SuperChat',
+      },
+    };
+    assert.deepEqual(yawl.parseSubProtocolList(request), ['chat', 'superchat']);
   });
 
   it("client throws error for invalid protocol", function() {

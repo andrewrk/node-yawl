@@ -903,12 +903,6 @@ function getBits(b, start, len) {
   return (b << (start + 24)) >>> (32 - len);
 }
 
-function readUInt64BE(buffer, offset) {
-  var big   = buffer.readUInt32BE(offset, BUFFER_NO_DEBUG);
-  var small = buffer.readUInt32BE(offset + 4, BUFFER_NO_DEBUG);
-  return big * 0x100000000 + small;
-}
-
 function writeUInt64BE(buffer, value, offset) {
   var big = Math.floor(value / 0x100000000);
   var small = value - big;
