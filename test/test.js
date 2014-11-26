@@ -296,12 +296,10 @@ describe("yawl", function() {
     assert.deepEqual(yawl.parseExtensionList({headers: {}}), null);
   });
 
-  it("parseExtensionList complicated");
-  /*
   it("parseExtensionList complicated", function() {
     var request = {
       headers: {
-        'sec-websockets-extensions': 'foo, bar; baz=2; extra, third; arg="qu,o\"t;ed"',
+        'sec-websocket-extensions': 'foo,bar; baz=2;extra, third; arg="quoted"',
       },
     };
     var expected = [
@@ -327,12 +325,11 @@ describe("yawl", function() {
         params: [
           {
             name: 'arg',
-            value: 'quo"ted',
+            value: 'quoted',
           },
         ],
       },
     ];
     assert.deepEqual(yawl.parseExtensionList(request), expected);
   });
-  */
 });
