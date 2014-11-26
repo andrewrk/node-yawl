@@ -713,14 +713,16 @@ function parseSubProtocolList(request) {
 
 // https://tools.ietf.org/html/rfc2616#section-2.2
 var tokenizerRegex = new RegExp(
-    '([^\u0000-\u001f()<>@,;:\\\\'+'"'+'/\\[\\]?={} \t]+)' + '|' + // token
-    '([' +          '()<>@,;:\\\\'  +  '/\\[\\]?={} \t])'  + '|' + // separators (without '"')
-    '("(?:[^"\\\\]|\\\\.)*")'                              + '|' + // quoted-string
-    '([^])',                                                       // invalid
+    '([^\u0000-\u001f()<>@,;:\\\\'+'"'+'/\\[\\]?={}'+' '+'\t]+)' + '|' + // token
+    '([' +          '()<>@,;:\\\\'  +  '/\\[\\]?={}'  +  '\t])'  + '|' + // separators (without '" ')
+    '("(?:[^"\\\\]|\\\\.)*")'                                    + '|' + // quoted-string
+    '((?:\r\n)?[ \t]+)'                                          + '|' + // LWS
+    '([^])',                                                             // invalid
     "g");
 var TOKEN = 1;
 var SEPARATOR = 2;
 var QUOTED_STRING = 3;
+var LWS = 4;
 var EOF = -1;
 var syntaxErrorMessage = "websocket-extensions syntax error";
 function parseExtensionList(request) {
@@ -760,6 +762,8 @@ function parseExtensionList(request) {
       tokenizerRegex.lastIndex = lastLastIndex;
 
       tokens.push({type:TOKEN, text:text});
+    } else if (match[LWS] != null) {
+      // ignore whitespace
     } else {
       // invalid
       throw new Error(syntaxErrorMessage);
