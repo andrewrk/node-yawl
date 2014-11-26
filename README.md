@@ -137,7 +137,9 @@ Yields:
 ### yawl.parseExtensionList(request)
 
 Parses `request.headers['sec-websocket-extensions']` and returns an array of
-objects.
+objects. If the header is invalid according to
+[RFC6455 9.1](https://tools.ietf.org/html/rfc6455#section-9.1) then an error
+is thrown.
 
 Example:
 
@@ -322,7 +324,7 @@ websocket client does not represent a client connected to a server, the buffer
 you pass to `write()` will be modified in place. Make a copy of the buffer if
 you do not want this to happen.
 
-#### ws.sendFragment(finBit, opcode, buffer)
+#### ws.sendFragment(finBit, opcode, length, [buffer])
 
 This is a low level method that you will only need if you are writing tests or
 using yawl to test other code.
@@ -335,7 +337,12 @@ using yawl to test other code.
    - `yawl.OPCODE_CLOSE`
    - `yawl.OPCODE_PING`
    - `yawl.OPCODE_PONG`
- * `buffer` - `Buffer`. If you want no fragment body, use `yawl.EMPTY_BUFFER`.
+ * `length` - `Number`. Length of the fragment. If you pass a `buffer`
+   argument, this should be `buffer.length`.
+ * `buffer` (optional) - `Buffer`. If you want a 0-length fragment body, pass
+   0 for `length` and do not pass a `buffer` argument. If you want
+   `sendFragment` to not send the fragment body, do not pass a `buffer`
+   argument.
 
 ### ws.close([statusCode], [message])
 
@@ -554,6 +561,5 @@ as usual.
 
 ## Roadmap to 1.0.0
 
- * sendStream: send as unfragmented if length is present
  * when client tries to send message if there is a stream ongoing, it queues
    the data instead of erroring

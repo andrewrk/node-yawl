@@ -26,8 +26,6 @@ var OPCODE_CLOSE              = exports.OPCODE_CLOSE              = 0x8;
 var OPCODE_PING               = exports.OPCODE_PING               = 0x9;
 var OPCODE_PONG               = exports.OPCODE_PONG               = 0xA;
 
-var EMPTY_BUFFER = exports.EMPTY_BUFFER = new Buffer(0);
-
 var HANDSHAKE_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
 
 var STATE_COUNT          = 0;
@@ -93,6 +91,10 @@ var CONTROL_FRAME_STATE = [
   STATE_CLOSE_FRAME,  // connection close
   STATE_PING_FRAME,  // ping
   STATE_PONG_FRAME,  // pong
+];
+var IS_UTF8_OPCODE = [
+  OPCODE_BINARY_FRAME, // false
+  OPCODE_TEXT_FRAME,   // true
 ];
 
 var BUFFER_NO_DEBUG = true;
@@ -589,74 +591,51 @@ WebSocketClient.prototype.sendBinary = function(buffer, isUtf8) {
   if (this.error) {
     throw new Error("socket in error state");
   }
-  var opcode = isUtf8 ? OPCODE_TEXT_FRAME : OPCODE_BINARY_FRAME;
-  this.sendFragment(FIN_BIT_1, opcode, buffer);
+  this.sendFragment(FIN_BIT_1, IS_UTF8_OPCODE[+!!isUtf8], buffer.length, buffer);
 };
 
 WebSocketClient.prototype.sendStream = function(isUtf8, length, options) {
-  var client = this;
-  if (client.sendingStream) {
+  if (this.sendingStream) {
     throw new Error("send stream already in progress");
   }
-  if (client.error) {
+  if (this.error) {
     throw new Error("socket in error state");
   }
-  client.sendingStream = new stream.Writable(options);
-  var first = true;
-  client.sendingStream._write = function(buffer, encoding, callback) {
-    if (client.state === STATE_CLOSING) {
-      callback(new Error("websocket is CLOSING"));
-      return;
-    } else if (client.state === STATE_CLOSED) {
-      callback(new Error("websocket is CLOSED"));
-      return;
-    }
-    var opcode;
-    if (first) {
-      first = false;
-      opcode = isUtf8 ? OPCODE_TEXT_FRAME : OPCODE_BINARY_FRAME;
-    } else {
-      opcode = OPCODE_CONTINUATION_FRAME;
-    }
-    client.sendFragment(FIN_BIT_0, opcode, buffer);
-    callback();
-  };
-
-  client.sendingStream.on('finish', function() {
-    client.sendingStream = null;
-    client.sendFragment(FIN_BIT_1, OPCODE_CONTINUATION_FRAME, EMPTY_BUFFER);
-  });
-
-  return client.sendingStream;
+  return (length == null) ? sendFragmentedStream(this, isUtf8, options) :
+    sendUnfragmentedStream(this, isUtf8, length, options);
 };
 
-WebSocketClient.prototype.sendFragment = function(finBit, opcode, buffer) {
+WebSocketClient.prototype.sendFragment = function(finBit, opcode, length, buffer) {
   var byte1 = finBit | opcode;
   var header;
   var maskOffset;
-  if (buffer.length <= 125) {
+  if (length <= 125) {
     maskOffset = 2;
     header = new Buffer(maskOffset + this.maskOutSize);
-    header[1] = buffer.length | this.maskOutBit;
-  } else if (buffer.length <= 65535) {
+    header[1] = length | this.maskOutBit;
+  } else if (length <= 65535) {
     maskOffset = 4;
     header = new Buffer(maskOffset + this.maskOutSize);
     header[1] = 126 | this.maskOutBit;
-    header.writeUInt16BE(buffer.length, 2, BUFFER_NO_DEBUG);
+    header.writeUInt16BE(length, 2, BUFFER_NO_DEBUG);
   } else {
     maskOffset = 10;
     header = new Buffer(maskOffset + this.maskOutSize);
     header[1] = 127 | this.maskOutBit;
-    writeUInt64BE(header, buffer.length, 2);
+    writeUInt64BE(header, length, 2);
   }
   header[0] = byte1;
+  var mask;
   if (this.maskOutBit) {
-    var mask = rando(4);
+    mask = rando(4);
     mask.copy(header, maskOffset);
-    maskMangleBuf(buffer, mask);
+    if (buffer) {
+      maskMangleBuf(buffer, mask);
+    }
   }
   this.push(header);
-  this.push(buffer);
+  if (buffer) this.push(buffer);
+  return mask;
 };
 
 WebSocketClient.prototype.sendPingBinary = function(msgBuffer) {
@@ -666,7 +645,7 @@ WebSocketClient.prototype.sendPingBinary = function(msgBuffer) {
   if (this.error) {
     throw new Error("socket in error state");
   }
-  this.sendFragment(FIN_BIT_1, OPCODE_PING, msgBuffer);
+  this.sendFragment(FIN_BIT_1, OPCODE_PING, msgBuffer.length, msgBuffer);
 };
 
 WebSocketClient.prototype.sendPingText = function(message) {
@@ -680,7 +659,7 @@ WebSocketClient.prototype.sendPongBinary = function(msgBuffer) {
   if (this.error) {
     throw new Error("socket in error state");
   }
-  this.sendFragment(FIN_BIT_1, OPCODE_PONG, msgBuffer);
+  this.sendFragment(FIN_BIT_1, OPCODE_PONG, msgBuffer.length, msgBuffer);
 };
 
 WebSocketClient.prototype.sendPongText = function(message) {
@@ -715,11 +694,71 @@ function sendCloseWithMessage(client, statusCode, message) {
   }
   buffer.writeUInt16BE(statusCode, 0, BUFFER_NO_DEBUG);
   buffer = buffer.slice(0, bytesWritten + 2);
-  client.sendFragment(FIN_BIT_1, OPCODE_CLOSE, buffer);
+  client.sendFragment(FIN_BIT_1, OPCODE_CLOSE, buffer.length, buffer);
+}
+
+function sendFragmentedStream(client, isUtf8, options) {
+  client.sendingStream = new stream.Writable(options);
+  var first = true;
+  client.sendingStream._write = function(buffer, encoding, callback) {
+    if (client.state === STATE_CLOSING) {
+      callback(new Error("websocket is CLOSING"));
+      return;
+    } else if (client.state === STATE_CLOSED) {
+      callback(new Error("websocket is CLOSED"));
+      return;
+    }
+    var opcode;
+    if (first) {
+      first = false;
+      opcode = IS_UTF8_OPCODE[+!!isUtf8];
+    } else {
+      opcode = OPCODE_CONTINUATION_FRAME;
+    }
+    client.sendFragment(FIN_BIT_0, opcode, buffer.length, buffer);
+    callback();
+  };
+
+  client.sendingStream.on('finish', function() {
+    client.sendingStream = null;
+    client.sendFragment(FIN_BIT_1, OPCODE_CONTINUATION_FRAME, 0);
+  });
+
+  return client.sendingStream;
+}
+
+function sendUnfragmentedStream(client, isUtf8, length, options) {
+  client.sendingStream = new stream.Writable(options);
+  var offset = 0;
+  var start = true;
+  var mask;
+  client.sendingStream._write = function(buffer, encoding, callback) {
+    if (client.state === STATE_CLOSING) {
+      callback(new Error("websocket is CLOSING"));
+      return;
+    } else if (client.state === STATE_CLOSED) {
+      callback(new Error("websocket is CLOSED"));
+      return;
+    }
+    if (start) {
+      start = false;
+      mask = client.sendFragment(FIN_BIT_1, IS_UTF8_OPCODE[+isUtf8], length);
+    }
+    maskMangleBufOffset(buffer, mask, offset);
+    client.push(buffer);
+    offset += buffer.length;
+    callback();
+  };
+
+  client.sendingStream.on('finish', function() {
+    client.sendingStream = null;
+  });
+
+  return client.sendingStream;
 }
 
 function sendCloseBare(client) {
-  client.sendFragment(FIN_BIT_1, OPCODE_CLOSE, EMPTY_BUFFER);
+  client.sendFragment(FIN_BIT_1, OPCODE_CLOSE, 0);
 }
 
 function parseSubProtocolList(request) {
@@ -861,6 +900,12 @@ function handleError(client, err) {
   client.close(1011, "internal error");
 }
 
+function maskMangleBufOffset(buffer, mask, offset) {
+  for (var i = 0; i < buffer.length; i += 1) {
+    buffer[i] = buffer[i] ^ mask[(i + offset) % 4];
+  }
+}
+
 function maskMangleBuf(buffer, mask) {
   for (var i = 0; i < buffer.length; i += 1) {
     buffer[i] = buffer[i] ^ mask[i % 4];
@@ -869,9 +914,7 @@ function maskMangleBuf(buffer, mask) {
 
 function maskMangle(client, buffer) {
   if (!client.maskBit) return;
-  for (var i = 0; i < buffer.length; i += 1) {
-    buffer[i] = buffer[i] ^ client.mask[(i + client.frameOffset) % 4];
-  }
+  maskMangleBufOffset(buffer, client.mask, client.frameOffset);
 }
 
 function truthy(value) {
