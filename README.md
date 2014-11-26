@@ -10,7 +10,7 @@ Yet Another WebSocket Library - WebSocket server and client for Node.js
  * Almost [RFC 6455](https://tools.ietf.org/html/rfc6455) compliant. Exceptions:
    - Uses Node.js's built-in UTF-8 decoding and encoding which ignores errors.
      The spec says to close the connection when invalid UTF-8 is encountered.
-     Instead this module will silently ignore encoding errors just like the
+     Instead this module will silently ignore decoding errors just like the
      rest of your Node.js code.
    - "payload length" field is limited to `2^52` instead of `2^64`. JavaScript
      numbers are all 64-bit double precision floating point which have a 52-bit

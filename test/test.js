@@ -381,6 +381,21 @@ describe("yawl", function() {
     assert.deepEqual(yawl.parseExtensionList(request), expected);
   });
 
+  it("parseExtensionList", function() {
+    var request = {
+      headers: {
+        'sec-websocket-extensions': 'word',
+      },
+    };
+    var expected = [
+      {
+        name: 'word',
+        params: [],
+      },
+    ];
+    assert.deepEqual(yawl.parseExtensionList(request), expected);
+  });
+
   it("parseSubProtocolList", function() {
     var request = {
       headers: {
