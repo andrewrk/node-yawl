@@ -8,10 +8,10 @@ Yet Another WebSocket Library - WebSocket server and client for Node.js
 # Features
 
  * Almost [RFC 6455](https://tools.ietf.org/html/rfc6455) compliant. Exceptions:
-   - Uses Node.js's built-in UTF-8 decoding and encoding which ignores errors.
-     The spec says to close the connection when invalid UTF-8 is encountered.
-     Instead this module will silently ignore decoding errors just like the
-     rest of your Node.js code.
+   - Uses Node.js's built-in UTF-8 decoding which ignores errors. The spec says
+     to close the connection when invalid UTF-8 is encountered. Instead this
+     module will silently ignore decoding errors just like the rest of your
+     Node.js code.
    - "payload length" field is limited to `2^52` instead of `2^64`. JavaScript
      numbers are all 64-bit double precision floating point which have a 52-bit
      significand precision.
@@ -533,13 +533,12 @@ function maskMangleBuf(buffer, mask) {
 }
 ```
 
-This is as fast as it's going to get in JavaScript. To make this module faster
-we would have to have a native add-on.
+This is as fast as it's going to get in JavaScript. Making this module faster
+requires a native add-on.
 
 ## How to Run the Autobahn Tests
 
-Note that yawl additionally has its own tests which you can run using `npm test`
-as usual.
+Note that yawl has its own tests which you can run using `npm test` as usual.
 
 [Install wstest](http://autobahn.ws/testsuite/installation.html#installation)
 
