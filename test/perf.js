@@ -37,7 +37,7 @@ var tests = [
   },
   {
     name: "big buffer echo (ws)",
-    fn: bigBufferWs,
+    fn: makeBigBufferWs(false),
     req: function() { return ws ? null : 'npm install ws'; },
     size: bigFileSize,
   },
@@ -55,7 +55,7 @@ var tests = [
   },
   {
     name: "many small buffers (ws)",
-    fn: smallBufferWs,
+    fn: makeSmallBufferWs(false),
     req: function() { return ws ? null : 'npm install ws'; },
     size: totalSmallBufsSize,
   },
@@ -63,6 +63,18 @@ var tests = [
     name: "many small buffers (faye)",
     fn: smallBufferFaye,
     req: function() { return Faye ? null : 'npm install faye-websocket'; },
+    size: totalSmallBufsSize,
+  },
+  {
+    name: "permessage-deflate big buffer echo (ws)",
+    fn: makeBigBufferWs(true),
+    req: function() { return ws ? null : 'npm install ws'; },
+    size: bigFileSize,
+  },
+  {
+    name: "permessage-deflate many small buffers (ws)",
+    fn: makeSmallBufferWs(true),
+    req: function() { return ws ? null : 'npm install ws'; },
     size: totalSmallBufsSize,
   },
 ];
@@ -130,26 +142,29 @@ function bigBufferYawl(cb) {
   });
 }
 
-function bigBufferWs(cb) {
-  var httpServer = http.createServer();
-  var wss = new ws.Server({
-    server: httpServer,
-  });
-  wss.on('connection', function(ws) {
-    ws.on('message', function(buffer) {
-      ws.send(buffer);
+function makeBigBufferWs(perMessageDeflate) {
+  return function (cb) {
+    var httpServer = http.createServer();
+    var wss = new ws.Server({
+      server: httpServer,
+      perMessageDeflate: perMessageDeflate,
     });
-  });
-  httpServer.listen(function() {
-    var client = new ws('ws://localhost:' + httpServer.address().port + '/');
-    client.on('open', function() {
-      client.send(bigFileBuffer);
+    wss.on('connection', function(ws) {
+      ws.on('message', function(buffer) {
+        ws.send(buffer);
+      });
     });
-    client.on('message', function(buffer) {
-      client.close();
-      httpServer.close(cb);
+    httpServer.listen(function() {
+      var client = new ws('ws://localhost:' + httpServer.address().port + '/');
+      client.on('open', function() {
+        client.send(bigFileBuffer);
+      });
+      client.on('message', function(buffer) {
+        client.close();
+        httpServer.close(cb);
+      });
     });
-  });
+  }
 }
 
 function bigBufferFaye(cb) {
@@ -216,32 +231,35 @@ function smallBufferYawl(cb) {
   });
 }
 
-function smallBufferWs(cb) {
-  var httpServer = http.createServer();
-  var wss = new ws.Server({
-    server: httpServer,
-  });
-  wss.on('connection', function(ws) {
-    ws.on('message', function(buffer) {
-      ws.send(buffer);
+function makeSmallBufferWs(perMessageDeflate) {
+  return function(cb) {
+    var httpServer = http.createServer();
+    var wss = new ws.Server({
+      server: httpServer,
+      perMessageDeflate: perMessageDeflate,
     });
-  });
-  httpServer.listen(function() {
-    var client = new ws('ws://localhost:' + httpServer.address().port + '/');
-    client.on('open', function() {
-      smallBufs.forEach(function(buf) {
-        client.send(buf);
+    wss.on('connection', function(ws) {
+      ws.on('message', function(buffer) {
+        ws.send(buffer);
       });
     });
-    var count = 0;
-    client.on('message', function(buffer) {
-      count += 1;
-      if (count === smallBufCount) {
-        client.close();
-        httpServer.close(cb);
-      }
+    httpServer.listen(function() {
+      var client = new ws('ws://localhost:' + httpServer.address().port + '/');
+      client.on('open', function() {
+        smallBufs.forEach(function(buf) {
+          client.send(buf);
+        });
+      });
+      var count = 0;
+      client.on('message', function(buffer) {
+        count += 1;
+        if (count === smallBufCount) {
+          client.close();
+          httpServer.close(cb);
+        }
+      });
     });
-  });
+  };
 }
 
 function smallBufferFaye(cb) {
