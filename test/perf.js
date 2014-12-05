@@ -38,13 +38,13 @@ var tests = [
   {
     name: "big buffer echo (ws)",
     fn: makeBigBufferWs(false),
-    req: function() { return ws ? null : 'npm install ws'; },
+    req: reqWs,
     size: bigFileSize,
   },
   {
     name: "big buffer echo (faye)",
     fn: bigBufferFaye,
-    req: function() { return Faye ? null : 'npm install faye-websocket'; },
+    req: reqFaye,
     size: bigFileSize,
   },
   {
@@ -56,25 +56,25 @@ var tests = [
   {
     name: "many small buffers (ws)",
     fn: makeSmallBufferWs(false),
-    req: function() { return ws ? null : 'npm install ws'; },
+    req: reqWs,
     size: totalSmallBufsSize,
   },
   {
     name: "many small buffers (faye)",
     fn: smallBufferFaye,
-    req: function() { return Faye ? null : 'npm install faye-websocket'; },
+    req: reqFaye,
     size: totalSmallBufsSize,
   },
   {
     name: "permessage-deflate big buffer echo (ws)",
     fn: makeBigBufferWs(true),
-    req: function() { return ws ? null : 'npm install ws'; },
+    req: reqWs,
     size: bigFileSize,
   },
   {
     name: "permessage-deflate many small buffers (ws)",
     fn: makeSmallBufferWs(true),
-    req: function() { return ws ? null : 'npm install ws'; },
+    req: reqWs,
     size: totalSmallBufsSize,
   },
 ];
@@ -291,3 +291,11 @@ function smallBufferFaye(cb) {
 }
 
 function noop() { }
+
+function reqWs() {
+  return ws ? null : 'npm install ws';
+}
+
+function reqFaye() {
+  return Faye ? null : 'npm install faye-websocket';
+}
