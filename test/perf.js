@@ -13,6 +13,11 @@ try {
   Faye = require('faye-websocket');
 } catch (err) {}
 
+var deflate;
+try {
+  deflate = require('permessage-deflate');
+} catch (err) {}
+
 // generate a big file
 var bigFileSize = 100 * 1024 * 1024;
 var bigFileBuffer = crypto.pseudoRandomBytes(bigFileSize);
@@ -43,7 +48,7 @@ var tests = [
   },
   {
     name: "big buffer echo (faye)",
-    fn: bigBufferFaye,
+    fn: makeBigBufferFaye(false),
     req: reqFaye,
     size: bigFileSize,
   },
@@ -61,7 +66,7 @@ var tests = [
   },
   {
     name: "many small buffers (faye)",
-    fn: smallBufferFaye,
+    fn: makeSmallBufferFaye(false),
     req: reqFaye,
     size: totalSmallBufsSize,
   },
@@ -75,6 +80,18 @@ var tests = [
     name: "permessage-deflate many small buffers (ws)",
     fn: makeSmallBufferWs(true),
     req: reqWs,
+    size: totalSmallBufsSize,
+  },
+  {
+    name: "permessage-deflate big buffer echo (faye)",
+    fn: makeBigBufferFaye(true),
+    req: reqFayeAndDeflate,
+    size: bigFileSize,
+  },
+  {
+    name: "permessage-deflate many small buffers (faye)",
+    fn: makeSmallBufferFaye(true),
+    req: reqFayeAndDeflate,
     size: totalSmallBufsSize,
   },
 ];
@@ -164,33 +181,40 @@ function makeBigBufferWs(perMessageDeflate) {
         httpServer.close(cb);
       });
     });
-  }
+  };
 }
 
-function bigBufferFaye(cb) {
-  var httpServer = http.createServer();
-  httpServer.on('upgrade', function(req, socket, head) {
-    var ws = new Faye(req, socket, head, null, { maxLength: bigFileSize });
-    ws.on('open', function() {
-      ws.on('message', function(buffer) {
-        ws.send(buffer);
+function makeBigBufferFaye(perMessageDeflate) {
+  return function (cb) {
+    var httpServer = http.createServer();
+    var extensions = [];
+    if (perMessageDeflate) extensions.push(deflate);
+    httpServer.on('upgrade', function(req, socket, head) {
+      var ws = new Faye(req, socket, head, null, {
+        extensions: extensions,
+        maxLength: Infinity
+      });
+      ws.on('open', function() {
+        ws.on('message', function(buffer) {
+          ws.send(buffer);
+        });
       });
     });
-  });
-  httpServer.listen(function() {
-    var client = new Faye.Client(
-      'ws://localhost:' + httpServer.address().port + '/',
-      null,
-      { maxLength: bigFileSize }
-    );
-    client.on('open', function() {
-      client.send(bigFileBuffer);
+    httpServer.listen(function() {
+      var client = new Faye.Client(
+        'ws://localhost:' + httpServer.address().port + '/',
+        null,
+        { extensions: extensions, maxLength: Infinity }
+      );
+      client.on('open', function() {
+        client.send(bigFileBuffer);
+      });
+      client.on('message', function(buffer) {
+        client.close();
+        httpServer.close(cb);
+      });
     });
-    client.on('message', function(buffer) {
-      client.close();
-      httpServer.close(cb);
-    });
-  });
+  };
 }
 
 function smallBufferYawl(cb) {
@@ -232,7 +256,7 @@ function smallBufferYawl(cb) {
 }
 
 function makeSmallBufferWs(perMessageDeflate) {
-  return function(cb) {
+  return function (cb) {
     var httpServer = http.createServer();
     var wss = new ws.Server({
       server: httpServer,
@@ -262,32 +286,40 @@ function makeSmallBufferWs(perMessageDeflate) {
   };
 }
 
-function smallBufferFaye(cb) {
-  var httpServer = http.createServer();
-  httpServer.on('upgrade', function(req, socket, head) {
-    var ws = new Faye(req, socket, head);
-    ws.on('open', function() {
-      ws.on('message', function(buffer) {
-        ws.send(buffer);
+function makeSmallBufferFaye(perMessageDeflate) {
+  return function (cb) {
+    var httpServer = http.createServer();
+    var extensions = [];
+    if (perMessageDeflate) extensions.push(deflate);
+    httpServer.on('upgrade', function(req, socket, head) {
+      var ws = new Faye(req, socket, head, null, { extensions: extensions });
+      ws.on('open', function() {
+        ws.on('message', function(buffer) {
+          ws.send(buffer);
+        });
       });
     });
-  });
-  httpServer.listen(function() {
-    var client = new Faye.Client('ws://localhost:' + httpServer.address().port + '/');
-    client.on('open', function() {
-      smallBufs.forEach(function(buf) {
-        client.send(buf);
+    httpServer.listen(function() {
+      var client = new Faye.Client(
+        'ws://localhost:' + httpServer.address().port + '/',
+        null,
+        { extensions: extensions }
+      );
+      client.on('open', function() {
+        smallBufs.forEach(function(buf) {
+          client.send(buf);
+        });
+      });
+      var count = 0;
+      client.on('message', function(buffer) {
+        count += 1;
+        if (count === smallBufCount) {
+          client.close();
+          httpServer.close(cb);
+        }
       });
     });
-    var count = 0;
-    client.on('message', function(buffer) {
-      count += 1;
-      if (count === smallBufCount) {
-        client.close();
-        httpServer.close(cb);
-      }
-    });
-  });
+  };
 }
 
 function noop() { }
@@ -298,4 +330,8 @@ function reqWs() {
 
 function reqFaye() {
   return Faye ? null : 'npm install faye-websocket';
+}
+
+function reqFayeAndDeflate() {
+  return Faye && deflate ? null : 'npm install faye-websocket permessage-deflate';
 }
