@@ -508,18 +508,20 @@ shortly followed by the `close` event.
 
 ```
 $ node -v
-v0.10.33
+v0.10.35
 $ date
-Fri Dec  5 11:07:03 MST 2014
+Wed Jan 21 09:24:13 MST 2015
 $ node test/perf.js
-big buffer echo (yawl): 0.49s  202MB/s
-big buffer echo (ws): 0.28s  361MB/s
-big buffer echo (faye): 0.43s  234MB/s
-many small buffers (yawl): 0.36s  13MB/s
-many small buffers (ws): 0.35s  14MB/s
-many small buffers (faye): 0.33s  15MB/s
-permessage-deflate big buffer echo (ws): 7.64s  13MB/s
-permessage-deflate many small buffers (ws): 1.77s  3MB/s
+big buffer echo (yawl): 0.52s  191MB/s
+big buffer echo (ws): 0.26s  388MB/s
+big buffer echo (faye): 0.54s  186MB/s
+many small buffers (yawl): 0.41s  12MB/s
+many small buffers (ws): 0.33s  15MB/s
+many small buffers (faye): 0.58s  8MB/s
+permessage-deflate big buffer echo (ws): 8.57s  12MB/s
+permessage-deflate many small buffers (ws): 1.76s  3MB/s
+permessage-deflate big buffer echo (faye): 4.59s  22MB/s
+permessage-deflate many small buffers (faye): 2.31s  2MB/s
 done
 ```
 
