@@ -28,13 +28,13 @@
   "author": "Andrew Kelley <superjoe30@gmail.com>",
   "license": "MIT",
   "dependencies": {
-    "bl": "~0.9.3",
+    "bl": "~0.9.4",
     "pend": "~1.2.0"
   },
   "devDependencies": {
     "human-size": "~1.1.0",
-    "istanbul": "~0.3.2",
-    "mocha": "~2.0.1"
+    "istanbul": "~0.3.5",
+    "mocha": "~2.1.0"
   },
   "directories": {
     "test": "test"

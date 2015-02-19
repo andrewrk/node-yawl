@@ -682,9 +682,9 @@ WebSocketClient.prototype.isOpen = function() {
 };
 
 function sendCloseWithMessage(client, statusCode, message) {
-  var buffer = new Buffer(125);
-  var bytesWritten = buffer.write(message, 2, 123, 'utf8');
-  if (Buffer._charsWritten !== message.length) {
+  var buffer = new Buffer(130);
+  var bytesWritten = buffer.write(message, 2, 128, 'utf8');
+  if (bytesWritten > 123) {
     throw new Error("close message too long");
   }
   buffer.writeUInt16BE(statusCode, 0, BUFFER_NO_DEBUG);
