@@ -1,6 +1,6 @@
 {
   "name": "yawl",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "yet another web sockets library",
   "scripts": {
     "test": "mocha --reporter spec --check-leaks test/test.js",

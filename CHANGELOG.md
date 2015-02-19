@@ -1,3 +1,7 @@
+### Version 1.0.2 (2015-02-18)
+
+ * fix compatibility with node v0.12
+
 ### Version 1.0.1 (2014-12-01)
 
  * `createClient` respects the `origin` option.
